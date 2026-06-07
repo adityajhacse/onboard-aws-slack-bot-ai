@@ -1,0 +1,144 @@
+================================================================================
+MCP server: src/mcp_server.py (FastMCP "aws-det-poc")
+================================================================================
+
+Purpose
+-------
+This process exposes a Model Context Protocol (MCP) server so MCP clients
+(e.g. Cursor, Claude Desktop, or this repo's mcp_client) can read DET intake
+documentation (resources), run read-only intake helpers (tools), and perform
+guarded write operations to GitHub and HCP Terraform (tools).
+
+MCP does not use Slack-style "events." The client and server exchange MCP
+messages over a transport. Typical client actions are:
+  - List/read RESOURCES (static or generated URIs).
+  - List/call TOOLS (functions with arguments and JSON results).
+
+Transport
+---------
+When started as a script (python -m or python mcp_server.py), the server runs
+with transport "stdio" (stdin/stdout MCP framing). Same module can be imported
+elsewhere to attach the shared `mcp` FastMCP instance.
+
+================================================================================
+RESOURCES (@mcp.resource) — MCP "resources/read"
+================================================================================
+Resources are URIs the client can fetch as text. They are read-only hints for
+models or humans; they do not change remote systems.
+
+1) det://schema/intake
+   Handler: det_schema_resource()
+   Returns: JSON string (pretty-printed) of the DET intake JSON Schema from
+            det_intake.intake_schema().
+
+2) det://examples/aft-request
+   Handler: det_aft_example_resource()
+   Returns: JSON string (pretty-printed) of a single illustrative AFT-style
+            intake example (hard-coded sample shape).
+
+3) det://policies/naming
+   Handler: det_naming_resource()
+   Returns: Plain-text naming and workspace/DNS policy notes for DET projects.
+
+================================================================================
+TOOLS (@mcp.tool) — MCP "tools/call"
+================================================================================
+Tools are invokable functions. Each becomes a named MCP tool with a JSON schema
+derived from the Python function signature.
+
+-------------------------------------------------------------------------------
+Read-oriented / side-effect free (no approval token; no GitHub/HCP writes)
+-------------------------------------------------------------------------------
+
+det_get_intake_schema()
+  Returns: dict — same as intake_schema() from det_intake (JSON Schema object).
+
+det_validate_intake(candidate: dict)
+  Returns: dict — validate_intake(candidate): validity, missing_fields,
+            errors, normalized intake payload when valid.
+
+det_normalize_project(candidate: dict)
+  Returns: dict with keys project_name, project_slug, project_upper,
+            github_branch — derived via normalize_intake and branch sanitizer.
+
+det_preview_request(candidate: dict, slack_user: dict | None = None)
+  Returns: dict — preview_request(...) from det_intake (Slack-oriented preview
+            metadata; slack_user defaults to {}).
+
+-------------------------------------------------------------------------------
+Write-oriented (require approval token + optional dry-run)
+-------------------------------------------------------------------------------
+
+det_commit_intake_to_github(
+    candidate: dict,
+    slack_user: dict | None = None,
+    approval_token: str = "",
+)
+  Behavior:
+    1) _require_write_approval(approval_token) — see "Write guard" below.
+    2) validate_intake(candidate). If invalid, returns JSON status "invalid"
+       with missing_fields and errors (no GitHub call).
+    3) build_github_intake_document(intake, slack_user or {}).
+    4) Path: env GITHUB_FILE_PATH if set, else default from builder.
+       Owner/repo/base branch: GITHUB_OWNER, GITHUB_REPO, GITHUB_BASE_BRANCH
+       (defaults exist in code for owner/repo).
+    5) If DET_DRY_RUN is enabled (default): returns status "dry_run" with
+       planned owner, repo, branch, path, request_id, payload — no API writes.
+    6) If GITHUB_TOKEN missing: returns status "error" with message.
+    7) Otherwise: ensure_git_branch(...), put_repository_json_file(...).
+       Returns status "committed" with url from GitHub response when present.
+
+det_create_hcp_project(candidate: dict, approval_token: str = "")
+  Behavior:
+    1) _require_write_approval(approval_token).
+    2) validate_intake(candidate); on invalid, same "invalid" shape as above.
+    3) Uses validation["intake"]["project_upper"] as HCP project name input.
+    4) If DET_DRY_RUN enabled: returns status "dry_run" (no HCP call).
+    5) Otherwise: create_project(project_name) from hcp_terraform; returns
+       status "created" with project_name from the API layer.
+
+================================================================================
+Write guard and dry-run (not separate MCP calls)
+================================================================================
+
+_require_write_approval(approval_token)
+  Compares approval_token to environment variable DET_MCP_WRITE_TOKEN (after
+  strip). If DET_MCP_WRITE_TOKEN is empty OR tokens do not match, raises
+  PermissionError("Write tools require Slack approval.").
+  Used only by: det_commit_intake_to_github, det_create_hcp_project.
+
+_dry_run_enabled()
+  Reads DET_DRY_RUN (default "true"). Treats as disabled only when value
+  (lowered) is one of: "0", "false", "no", "off".
+  When enabled, write tools return dry_run status without calling GitHub/HCP.
+
+================================================================================
+Environment variables referenced by mcp_server.py
+================================================================================
+DET_MCP_WRITE_TOKEN     Shared secret for write tools (must match approval_token).
+DET_DRY_RUN             When true-ish, skip real GitHub/HCP mutations.
+GITHUB_TOKEN          PAT for GitHub API (required for real commit path).
+GITHUB_FILE_PATH      Optional override for JSON file path in repo.
+GITHUB_OWNER          Repo owner (default in code if unset).
+GITHUB_REPO           Repo name (default in code if unset).
+GITHUB_BASE_BRANCH    Base branch for new project branches (default "main").
+
+HCP / Terraform Cloud configuration is consumed inside create_project() in
+hcp_terraform.py (not repeated here).
+
+================================================================================
+What this file does NOT do
+================================================================================
+- No custom MCP "notifications" or server-pushed events are defined here.
+- No HTTP/SSE transport in __main__; only stdio when run as script.
+- Intake business rules beyond delegation live in det_intake.py, github_api.py,
+  and hcp_terraform.py.
+
+================================================================================
+Quick mapping: MCP client action -> Python surface
+================================================================================
+resources/list or resources/read  ->  @mcp.resource handlers above
+tools/list                        ->  all @mcp.tool functions
+tools/call name=<tool>            ->  matching function with JSON arguments
+
+End of document.

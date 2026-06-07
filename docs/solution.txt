@@ -1,0 +1,372 @@
+
+4.
+
+
+Current project create all resource at same time imside python. 
+1. I want to make a this project little abstract project which will allow retry and each step would be independen using lambda and step function.
+2. Once user submits all details during oboarding process form slack it should call api gateway to triggerr lambda/ step function for each step if it fails it should not tgo to next step. and with retry each step could be executed separtely.
+3. Create aws resource inside terraform file folder.
+
+
+
+EDD Platform: Workload Environment Creation Design Proposal
+This document is a request for comment. It proposes a target direction for discussion and alignment; it is not a finalized implementation design or committed delivery plan.
+This design describes the target flow for creating a new workload environment from Slack using a supported platform golden path. The intent is simple: the user asks once, the platform plans once, and each downstream system receives the minimum typed contract it needs to do its job.
+AWS Fargate is the first golden path for this design. The architecture should not be limited to Fargate; the same control plane, inventory model, orchestration pattern, and scaffolding contract should support additional golden paths over time.
+1. Scope And Goal
+The goal of this design is to define the target platform flow for creating and tracking a workload environment from initial request through ready state.
+The platform needs to track the full lifecycle of a workload and its associated workload environment, and maintain a workload inventory: a manifest of all resources created for that workload. The workload inventory includes the workload record, the workload environment plan, AWS accounts, account baselines, GitHub repository, HCP Terraform project and workspaces, shared account/network outputs, Vault paths, resource links, and lifecycle status.
+The platform should be able to answer, at any point in time:
+what workload was requested
+which resources are expected to exist
+which resources actually exist
+manifest of resources created for the workload and links to each resource
+which step is currently running or failed
+which action is safe to retry
+This RFC focuses on the target architecture, sequencing, implementation model, and major component responsibilities. It does not define every field-level schema, every policy rule, or every migration step required to evolve existing systems.
+1.1 Personas
+The design has two primary personas:
+Workload User: requests a workload environment, provides business/application context, and uses the resulting repository, Terraform workspaces, account links, Vault references, and status links.
+Platform Admin: operates the platform control plane, reviews workload inventory and lifecycle state, investigates failures, retries safe steps, and maintains the golden path configuration, templates, and policies.
+2. Overall Design
+The target architecture is a small platform control plane hosted primarily in a Core Infra AWS account. The solution is a Slack bot that receives workload details from a user, validates the workload requests via lambdas exposed via API Gateway and ultimately kicks off an AWS step function to orchestrate the many resources needed to create a workload environment. Each resource (AWS accounts, GitHub Repos etc) that needs to be created would have an associated lambda function that is responsible for the creation/configuration of the resource. Data about each workload, its associated resources and the state of workload environment provisioning is kept in a workload registry implemented in DynamoDB. 
+
+
+Lucid Chart Link
+2.1 Overall Design - Workload Registry And Inventory State
+The workload registry is the durable inventory for the workload lifecycle. It records the workload, the requested workload environment, the resources that should be created, the resources that were actually created, the lifecycle events, and the links back to each external system.
+This should be implemented in DynamoDB because the access pattern is workload-centric and event-oriented. The platform usually needs to answer questions by workload_slug, execution ID, or idempotency key; it does not need broad relational joins across all workloads. DynamoDB also gives the platform conditional writes for safe retries, high availability, serverless scaling, and a natural place to store append-only lifecycle events alongside the current inventory view.
+At a high level, the registry stores:
+workload metadata: what the workload is for, who owns it, who can operate it, and who is responsible for cost
+workload environment intent: selected golden path, account tiers, AWS regions, DNS choices, VPC sizing, data classification, and compliance flags
+created resource inventory: AWS accounts, account baselines, GitHub repository, HCP Terraform project/workspaces, shared AFT outputs, Vault paths, final scaffold commit, and resource links
+orchestration state: current step, execution status, retry count, last error, and callback correlation IDs
+lifecycle history: append-only events that show how the workload moved from requested to ready or failed
+2.2 Overall Design - Infra Orchestrator
+The Infra Orchestrator is the lifecycle coordinator. It accepts validated workload and workload environment plans, persists the desired inventory, calls the required platform components in order, records the actual resources created, and moves the workload to ready or failed state.
+The orchestrator should be implemented as an AWS Step Functions state machine. This flow is long-running, crosses several external systems, waits on asynchronous account vending, and needs explicit retry and recovery behavior. Step Functions gives the platform a durable workflow, observable execution history, built-in retry and timeout handling, and a clear place to model waits, branches, and terminal states.
+The state machine should own:
+accepting validated workload registration and workload environment plans as the input to the creation workflow
+recording desired inventory before external side effects
+creating or reserving the GitHub repository shell when downstream systems need a repository target
+calling AFT, HCP Terraform, AFT output sharing, Vault, and final project scaffolding in sequence
+waiting for account readiness and baseline completion
+recording actual inventory as each component returns references
+exposing failed steps and retry targets to the operator view
+moving the workload environment to ready only after the required inventory artifacts exist and the final /infra scaffold has been committed
+2.3 Overall Design - Lambda Interfaces To Existing Components
+Lambda functions provide thin, typed interfaces to the components used by the workflow. They translate the orchestrator's internal plan into each component's request shape, normalize responses back into the workload inventory, and keep integration details out of the state machine definition.
+The handlers below are implementation interfaces for the components covered in more detail in the component sequence section:
+Slack Request Handler Lambdas: receive calls from the Slack Platform Bot through API Gateway, verify Slack requests, resolve the Slack user to an enterprise identity, route action-specific requests, return validation and inventory results to Slack, and start the state machine after validation succeeds
+CreateWorkload Validation Lambda: confirms required ownership, cost center details, App 360, GUS, security, vulnerability, and approval records exist
+CreateWorkloadEnvironment Validation Lambda: confirms the requested golden path, account tiers, AWS regions, sizing, and environment options are allowed
+GitHub Repository Lambda: creates or reserves the workload repository shell and records repository references
+AFT Lambda: submits account requests and normalizes AFT response data
+AFT Readiness Lambda: receives events or polls for account readiness and updates DynamoDB
+HCP Terraform Lambda: creates workload project/workspaces after account readiness
+AFT Output Sharing Lambda: configures the HCP Terraform output-sharing relationship from AFT account baseline workspaces to workload workspaces
+Vault Lambda: calls Vault onboarding and GitHub sync
+Final Scaffold Lambda: renders the final /infra folder after account, workspace, output-sharing, and Vault references are available
+The Lambda layer should not become a second implementation of AFT, GitHub, HCP Terraform, or Vault. Its job is to provide a stable interface, normalize inputs and outputs, and update the workload inventory state in DynamoDB.
+
+2.4 Overall Design - Workload Slug And Naming Conventions
+The workload slug should be determined in the workload CreateWorkload step and used as the stable namespace and unique identifier for the workload. It should be up to 8 characters, enforced as unique by the workload registry, editable by the workload requester during intake, and derived from the workload name when the requester does not provide one.
+Once a workload is registered, the slug should be treated as the unique identifier that ties together and the registry record, AFT requests, AWS accounts, GitHub repository, HCP Terraform project/workspaces, Vault paths, identity groups, and standard IAM/OIDC references.
+Using deterministic names reduces the amount of message passing required between components. If every component can derive the expected name from the same workload slug, account environment, and golden path configuration, then the orchestrator can pass compact intent and record discovered references instead of copying every generated value between systems.
+Examples:
+AFT request IDs and account names include the workload slug and account tier, for example det-<workload_slug>-dev
+GitHub repositories use the workload naming convention, for example det-<workload_code>
+HCP Terraform projects and workspaces include the workload slug and account tier
+Vault paths include the workload slug and domain/product context
+IAM roles, OIDC provider references, identity groups, variable sets, and output-sharing references use names or tags that include the workload slug where platform policy allows
+When a resource has to use a shared or externally constrained name, the workload slug should still appear in tags, descriptions, metadata, or registry references. The point is not to force every system into the exact same naming format; it is to make the workload identity obvious and derivable everywhere the platform operates.
+2.5 Overall Design - Code Repository Scaffolding Model
+Scaffolding should turn the workload inventory into a usable repository, not ask each workload team to hand-build the connections between workload resources like AWS accounts and CI/CD pipelines. The platform should use a versioned template engine, such as Jinja, to render the repository structure for the selected golden path.
+This design uses a two-phase repository model. The GitHub repository is created or reserved early so downstream systems have a stable repository target. The final /infra scaffold is rendered later, after the workload inventory contains the concrete references needed by the template: AWS account IDs, VPC and subnet IDs, DNS outputs, role ARNs, HCP Terraform workspace references, AFT output-sharing references, and Vault references.
+The scaffolded /infra folder should include the static conventions that should not be rebuilt by every team:
+workspace mapping for each account tier
+provider and backend conventions
+references to standard OIDC roles used by delivery and Terraform execution
+references to shared AFT outputs for account and network facts
+golden-path-specific Terraform module calls that reference approved golden modules published to the HCP Terraform private module registry, such as the first AWS Fargate golden path
+The important contract is that scaffolding is golden-path aware but not Fargate-specific. A future golden path should be able to provide a new template and approved module set while using the same workload registry, orchestrator, output-sharing model, and final scaffold step.
+2.4 Overall Design - Operating Principles
+The design should be guided by a small set of operating principles:
+Persist intent before side effects. The platform should record what it plans to create before it calls external systems.
+Reconcile actual state. Each component response should update the workload inventory with the resources and references that actually exist.
+Make every step idempotent. If a workload record, GitHub repo, HCP workspace, AFT request, or Vault path already exists with the expected name, owner, and workload reference, the step should treat that as success and continue.
+Stop on conflicts. If an expected resource already exists with conflicting ownership or configuration, the platform should stop and make the conflict visible in status.
+Keep systems of record clear. DynamoDB tracks the workload inventory and orchestration state; AFT, GitHub, HCP Terraform, and Vault remain the systems of record for the resources they own.
+Store references, not secrets. The workload inventory should store links, IDs, paths, and status. It should not store secret values.
+3. Solution Components and Sequencing
+This section describes each component of the proposed solution and its responsibilities.
+Lucidchart Link
+3.1 Solution Component - Slack Platform Bot
+The Slack Platform Bot is the Workload User-facing entry point. It should make the workflow feel guided and simple, but it should not make infrastructure decisions.
+The first action is a CreateWorkload request. The Workload User issues the request through the Slack Platform Bot with the ownership and business context for the workload. The Slack Request Handlers then invoke preflight validation to confirm the App 360 record and GUS team are valid. Once those checks pass, the workload can be registered in the DynamoDB-backed workload registry.
+The second action is a CreateWorkloadEnvironment request. The Workload User provides the golden path they want to use, the AWS regions they need, the account tiers they need inside the workload environment, and general information about the initial cloud environment required to support the workload.
+Slack should integrate with preflight validation through commands and modals, not by embedding validation logic in the bot. The bot collects structured input, sends the signed Slack request to the Slack Request Handlers, and displays the validation result. If validation fails, the bot shows actionable missing or invalid records. If validation succeeds, the bot shows that the request was accepted and links the user to workload status.
+Data in:
+Workload User Slack identity and channel context
+workload creation command
+workload environment command
+Slack modal submissions
+selected golden path
+Request canonical environments (dev, stage, prod)
+requested AWS regions
+general initial cloud environment requirements 
+user-provided business/application details and prompt answers
+Data out:
+signed Slack request payloads to the Slack Request Handlers
+Slack modal prompts and follow-up messages
+status request
+Workload User-facing accepted, failed, or ready messages
+3.2 Solution Component - Slack Request Handlers
+The Slack Request Handlers are the boundary between Slack and the platform control plane. They should be exposed through API Gateway endpoints for specific Slack-backed actions, such as workload registration, workload environment creation, status lookup, inventory lookup, and operator actions. Each endpoint can route to a dedicated Lambda handler or a shared router Lambda with action-specific handlers behind it.
+The handlers receive slash command and modal submissions from the Slack Platform Bot, acknowledge Slack quickly, validate that the request really came from Slack, map the Slack user to the platform identity, and turn the user input into typed platform requests.
+For create actions, the handlers should call the preflight validation Lambdas before starting any creation workflow. If validation fails, they return structured errors that the Slack Platform Bot can display in the modal or as an ephemeral message. If validation succeeds, they pass the validated plan to the Infra Orchestrator and return an accepted message with a status link.
+For read and operator actions, the handlers should read from the workload registry and return a consistent inventory view: what has been provisioned, what is still in progress, what failed, and which retry or reconcile actions are available. Over time, this inventory read model could also be exposed through an MCP server so the Slack Platform Bot can answer richer operator questions about workloads, environments, accounts, repositories, Terraform workspaces, Vault paths, and lifecycle state.
+The Slack Request Handlers should also support outbound Slack updates. When a request reaches a major milestone or completes, the platform should post back to the originating Slack thread or channel with the current state and the relevant resource links.
+Data in:
+signed Slack slash command or interactivity payload
+Slack team, channel, user, trigger, and response context
+user-submitted modal fields
+workload slug or workload identifier, when present
+command type: CreateWorkload, CreateWorkloadEnvironment, status, inventory lookup, or operator action
+workload record, workload environment and account records, lifecycle events, and execution state for read actions
+Data out:
+normalized CreateWorkload validation request
+normalized CreateWorkloadEnvironment validation request
+idempotency key derived from Slack request context and workload identity
+validated workload registration or workload environment plan passed to the Infra Orchestrator
+workload registry and provisioned resource inventory responses
+Slack milestone and completion notifications
+actionable validation errors returned to Slack
+accepted, failed, status, inventory, or operator response with relevant resource links
+3.3 Solution Component - CreateWorkload Validation
+CreateWorkload validation is the quick gate that happens after the Workload User provides the ownership and business context for the workload. It confirms that the user-provided values are complete enough to register the workload and that the workload has the right records in the external systems the platform depends on.
+This step does not create AWS accounts, repositories, workspaces, or Vault paths. It checks that ownership, cost responsibility, security findings, vulnerabilities, approvals, and operations can be attributed correctly before the workload is registered.
+In plain terms, this step makes sure the platform knows who owns the workload, what the workload is for, who is responsible for its costs, where security and vulnerability accountability should land, and who is authorized to approve or operate it.
+Data in:
+user-supplied workload purpose and business context
+App 360 service link
+GUS team
+requester identity
+app owner or approval group
+cost center or chargeback owner
+Business unit code?
+security or vulnerability ownership record, where applicable
+data classification and compliance flags
+Data in (Contract):
+user-supplied workload purpose and business context 
+Min 100 characters
+App 360 service link
+Regex of URL or ID of Salesforce App360 record
+Tech CI Record service link
+Regex of URL or ID of Salesforce App360 record
+GUS team
+Regex GUS Team ID
+requester identity
+Regex of email id from slack
+app owner or approval group
+Not required, if needed we can use slack bot availability in a channel to gate who has access to create accounts/workloads
+cost center id
+Regex of Workday or Oracle ERP Billing String
+Do we need to require this? 
+If so, know this is difficult to know
+Also does not mean that chargeback actually happens, this is a sourcing function to map costs correctly
+Business unit code?
+What is this? Let’s try to figure out what this is?
+Gus Product Tag
+security or vulnerability ownership record
+Regex of URL or ID of Gus Product Tag record
+data classification and compliance flags
+Not Required, for these fields, lets eventually derive them from App 360 when that requirement comes. 
+Application Name
+Required, but eventually derive from 360
+Regex App Name (spaces, alphanumeric)
+Data out:
+validated workload registration plan: business use case, app owner, authorized operator or approver group, cost center or chargeback owner, App 360 reference, GUS team, security/vulnerability ownership reference, data classification, compliance flags, and workload identifiers
+approval requirement or approval evidence
+validation failure details describing which required external record is missing or invalid
+3.4 Solution Component - CreateWorkloadEnvironment Validation
+CreateWorkloadEnvironment validation is the quick gate that happens after the Workload User describes the cloud environment needed to support the workload. It confirms that the selected golden path, AWS regions, account tiers, VPC sizing, and requested environment options are allowed before the orchestrator starts creating workload environment resources.
+This step uses the validated workload registration plan from CreateWorkload validation, then checks whether the requested workload environment shape is compatible with platform policy and the selected golden path.
+Data in:
+Workload ID 
+from Dynamo from CreateWorkload step
+selected golden path
+Single selection/value “AWS-Fargate” 
+What does the system scaffold into your infra repo?
+requested AWS regions
+Dropdown multi select
+Defaults to US-West-2
+Can additionally add EU-West-1, US-East-1
+requested account tiers, for example dev, qa, and prod
+Not Required
+Defaults to dev, qa, prod
+VPC sizing and DNS requirements
+Canonical namespace for DNS?
+Or can this be derived from app slug
+IE: does user give us eventsvc .det.salesforce.com to create a R53 zone, or do we use their app slug as the default namespace?
+VPC Sizing
+Not Required
+Defaults to S for dev
+Defaults to M
+
+
+Data out:
+validated workload environment plan: golden path type, account tiers, regions, VPC sizing, DNS choices, environment options, and approval result
+validation failure details describing which requested environment value is missing, unsupported, or not allowed
+3.5 Solution Component - Infra Orchestrator
+The Infra Orchestrator is the lifecycle coordinator and should be implemented as an AWS Step Functions state machine. It accepts the validated workload registration plan and validated workload environment plan, persists intent, calls each platform component in order, records external references, and advances only when the required outputs are present.
+Data in:
+validated workload registration plan
+validated workload environment plan
+requester identity
+idempotency key
+lifecycle callbacks or polling results from downstream systems
+Data out:
+workload and workload environment records
+repository bootstrap requests
+AFT account request intents
+HCP Terraform project/workspace requests
+AFT output-sharing requests
+Vault onboarding requests
+final scaffold requests
+status and retry state
+3.6 Solution Component - Workload Registry And Inventory State
+The registry is the durable memory of the workflow and should be implemented in DynamoDB. It stores desired state, actual state, correlation IDs, and lifecycle history. It should not replace App 360, GUS, AFT, GitHub, HCP Terraform, or Vault as their systems of record.
+Data in:
+validated workload registration plan: business purpose, owner, cost center or chargeback owner, approver/operator groups, App 360 and GUS references, security/vulnerability ownership reference, data classification, compliance flags, and workload identifiers
+validated workload environment plan: golden path type, account environments, regions, VPC sizing, DNS choices
+generated workload and workload environment identifiers
+external references from AFT, GitHub, HCP Terraform, Vault, and final scaffolding
+lifecycle events and execution state
+Data out:
+workload record
+workload environment and account records
+execution state
+lifecycle history
+lookup data for retries, callbacks, and status
+3.7 Solution Component - GitHub Repository Bootstrap
+The repository should be created or reserved early, but it should not be considered fully scaffolded at this point. This step gives downstream systems a stable repository target, reserves the deterministic workload repository name, and gives the workload inventory a GitHub reference to track.
+The repository bootstrap can create a minimal repository shell with ownership metadata, access controls, labels, topics, and a placeholder README. The final /infra folder should be rendered later, after the account, workspace, output-sharing, and Vault references exist.
+Data in:
+workload slug
+repository name
+GitHub org
+application name from App 360
+team name and ownership details from GUS
+repository description, labels, topics, and team permission model
+Data out:
+repository URL
+repository ID
+default branch
+repository ownership and access references
+repository bootstrap status
+3.8 Solution Component - HCP Project Creation
+This step will create a HCP Terraform Project, and an associated RBAC setup on HCP Terraform to restrict access to the Project to the GUS team requesting the account. This should not be considered a complete step in itself for the HCP Terraform side setup, but as a first step to the initial scaffolding done for a user on the HCP Terraform.
+Data in:
+HCP Terraform Project name (possibly a project name not tied to the workload slug)
+GUS team name and ownership details
+Data out:
+HCP Terraform Project creation status
+HCP Terraform “team” name/ID
+3.9 Solution Component - AFT Adapter
+The AFT Adapter translates the workload environment plan into the account request shape that AFT understands. It is the boundary that keeps the orchestrator independent from the mechanics of AFT submission.
+Data in:
+workload slug
+HCP Terraform Project Name
+account tier names
+account emails
+regions, VPC size, and DNS settings
+account tags and custom fields
+requester and change reason
+Data out:
+AFT request JSON or service request payload
+AFT request IDs
+request correlation references
+submission status
+3.10 Solution Component - AFT Account Vending And Baselines
+AFT remains the account vending engine. It creates the AWS accounts for each account tier, applies the account baselines, and runs the Terraform needed to establish account rails.
+AFT should produce the Terraform  account and network outputs that the workload’s will need later.
+Data in:
+AFT account requests
+account tags and custom fields
+account-tier-specific baseline configuration
+regions and VPC sizing
+data classification and compliance flags
+baseline selection from OU/account-tier policy
+Data out:
+AWS account IDs
+account provisioning status
+account baseline status
+VPC IDs, subnet IDs, DNS outputs, and baseline outputs
+Terraform-AWS OIDC deployment Role ARNs
+account-level audit and support references
+AFT HCP Terraform output source references for account and network facts
+3.11 Solution Component - HCP Workspace Scaffolding
+The workload HCP Terraform project is the execution boundary for the IaC that defines the workload's infrastructure. The dev/qa/prod workspaces should be created after AFT account creation has completed, so they can be immediately connected to the AFT output-sharing contract.
+Data in:
+workload slug
+workspace names for each account tier 
+workspace tags and account-tier labels
+repository and /infra working directory references
+golden path type and template version
+account readiness summary from AFT related workspaces
+Data out:
+HCP project ID/name
+workspace IDs/names
+workspace links
+workspace references stored in the workload inventory
+3.12 Solution Component - AFT Output Sharing
+AFT output sharing is the bridge between account vending and workload infrastructure execution. It configures the HCP Terraform relationship that allows workload workspaces to consume the workload AWS account and network details produced by AFT.
+Data in:
+AFT account customizations HCP Terraform source project + workspace references
+workload HCP Terraform project + workspace references
+account tier mapping, for example dev, qa, and prod
+approved output list, such as account IDs, VPC IDs, subnet IDs, DNS outputs, deployment role ARNs, and baseline outputs
+output-sharing policy, remote-state access settings, or variable-set target rules
+Data out:
+HCP Terraform output-sharing references
+published account/network output contract
+per-workspace consume references or variable-set IDs
+output-sharing status
+inventory links for the shared output contract
+3.12 Solution Component - Vault Onboarding And GitHub Sync
+Vault onboarding creates the standard secret path and configures the approved sync model for the repository. The orchestrator should store references and status, not raw secret material.
+Data in:
+workload slug
+team name and ownership context
+GitHub org and repository
+Vault instance and secret engine policy
+CD champion or approver names/groups where required
+Data out:
+Vault path references
+AppRole role reference
+GitHub sync reference
+onboarding and sync status
+3.13 Solution Component - Final Infra Scaffolding
+Final infra scaffolding is the step that makes the repository ready for the Workload User. It runs late in the flow because the template needs the concrete inventory created by earlier steps: account IDs, VPC IDs, subnet IDs, DNS outputs, role ARNs, HCP Terraform workspace references, AFT output-sharing references, and Vault references.
+The scaffolding service should use a versioned template engine, such as Jinja, to render the /infra folder. The template should generate the standard Terraform structure that should not be hand-built by every team: workspace mapping for each account tier, provider conventions, backend conventions, references to the standard OIDC roles that exist in each AWS account for pipeline and Terraform execution, and references to the shared Terraform outputs published through the AFT output-sharing contract.
+The template system should be golden-path aware. For the first golden path, it should scaffold the /infra frame needed for an AWS Fargate workload. Over time, the same pattern should support additional golden paths by rendering the right repository structure, workspace mapping, provider conventions, and Terraform module calls for that path. Those Terraform module calls should reference approved golden modules published to the HCP Terraform private module registry. For example, a Fargate template can call golden Fargate modules from the registry, and a future golden path can provide its own approved module set and template inputs.
+Data in:
+workload slug
+GitHub repository URL and repository ID
+golden path type, for example AWS-Fargate
+programming language, for example Python
+account tier mapping
+HCP Terraform project and workspace references
+AFT account, network, role, and output-sharing references
+Vault path and GitHub sync references
+template name and template version
+Data out:
+rendered /infra folder
+commit SHA or pull request reference
+standard workspace, provider, backend, OIDC role references, and shared AFT output references
+golden-path-specific Terraform module calls that reference approved modules in the HCP Terraform private module registry
+template version actually used
+expected workspace mapping for dev/qa/prod
+scaffold job status
+

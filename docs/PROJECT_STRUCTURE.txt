@@ -1,0 +1,56 @@
+Det-aws-cicd-project/
+├── 📁 lambda_functions/              ✅ NEW - Lambda function code
+│   ├── validate_intake/              ✅ Validates intake data
+│   │   └── handler.py
+│   ├── github_branch/                ✅ Creates Git branch
+│   │   └── handler.py
+│   ├── github_commit/                ✅ Commits to GitHub
+│   │   └── handler.py
+│   ├── hcp_project/                  ✅ Creates HCP Terraform project
+│   │   └── handler.py
+│   ├── hcp_workspace/                ✅ Creates workspace (parallel)
+│   │   └── handler.py
+│   ├── hcp_vars/                     ✅ Configures variables (parallel)
+│   │   └── handler.py
+│   └── shared_layer/                 ✅ Shared code layer
+│       └── python/
+│           ├── det_intake.py
+│           ├── github_api.py
+│           ├── hcp_terraform.py
+│           └── requirements.txt
+│
+├── 📁 terraform/                     ✅ NEW - Infrastructure as Code
+│   ├── main.tf                       ✅ Provider & backend config
+│   ├── variables.tf                  ✅ Input variables
+│   ├── outputs.tf                    ✅ Output values
+│   ├── iam.tf                        ✅ IAM roles & policies
+│   ├── lambda_functions.tf           ✅ Lambda definitions (6 functions)
+│   ├── lambda_layer.tf               ✅ Shared layer config
+│   ├── step_functions.tf             ✅ State machine with retry logic
+│   ├── api_gateway.tf                ✅ REST API endpoints
+│   ├── dynamodb.tf                   ✅ Execution tracking table
+│   ├── terraform.tfvars.example      ✅ Example configuration
+│   └── README.md                     ✅ Terraform documentation
+│
+├── 📁 src/                           📝 UPDATED - Slack app
+│   ├── main.py                       📌 Original (synchronous)
+│   ├── main_with_api_gateway.py     ✅ NEW - Uses API Gateway
+│   ├── api_gateway_client.py        ✅ NEW - API client
+│   ├── det_intake.py                 📌 Existing
+│   ├── github_api.py                 📌 Existing
+│   ├── hcp_terraform.py              📌 Existing
+│   └── ...                           📌 Other existing files
+│
+├── 📁 docs/                          📝 UPDATED
+│   ├── step-functions-architecture.md ✅ NEW - Architecture docs
+│   └── ...                           📌 Other existing docs
+│
+├── 📄 DEPLOYMENT.md                  ✅ NEW - Deployment guide
+├── 📄 REFACTORING_SUMMARY.md         ✅ NEW - Refactoring details
+├── 📄 QUICK_START.md                 ✅ NEW - Quick start guide
+└── 📄 README.md                      📌 Existing project README
+
+LEGEND:
+✅ NEW - Newly created for Step Functions architecture
+📝 UPDATED - Modified from original
+📌 Existing - Unchanged from original

@@ -1,0 +1,233 @@
+================================================================================
+Module: src/ai_orchestrator.py — DET Slack chat orchestration + MCP calls
+================================================================================
+
+Purpose
+-------
+Bridges Slack conversations to the in-process MCP client (LocalMcpClient),
+which spawns mcp_server.py per tool call. Maintains per-user Slack "chat
+sessions" (intake draft, preview, approval state) in InMemorySessionStore.
+
+This module does NOT define MCP tools; it CALLS them by name via self.mcp.
+
+================================================================================
+Types
+================================================================================
+
+ChatResponse (dataclass)
+  Fields:
+    text: str
+    blocks: list[dict] | None = None
+  Returned to main.py for Slack chat_postMessage / respond payloads.
+
+================================================================================
+Class: DetChatOrchestrator
+================================================================================
+
+Constructor
+-----------
+__init__(self, *, store=None, mcp_client=None)
+
+  store
+    Defaults to InMemorySessionStore() — holds ChatSession rows keyed by
+    team_id, channel_id, thread_ts, user_id.
+
+  mcp_client
+    Defaults to LocalMcpClient() — path to mcp_server.py alongside mcp_client.py.
+
+  Attributes after init:
+    self.store  — session persistence
+    self.mcp    — LocalMcpClient used for every MCP tool invocation
+
+-------------------------------------------------------------------------------
+Public methods (called from main.py and tests)
+-------------------------------------------------------------------------------
+
+handle_message(self, *, team_id, channel_id, user_id, thread_ts, text,
+               slack_user=None) -> ChatResponse
+
+  Session: get_or_create(...) loads or creates ChatSession for this Slack thread
+           + user context.
+
+  Flow (no MCP on early exits):
+    1) Strip bot mentions from text; handle reset / help-empty / text-approve
+       shortcuts without MCP.
+    2) Append user message to session.messages; merge intake updates via
+       _extract_updates (deterministic + optional OpenAI), or normalize_intake.
+    3) MCP #1 — see "MCP in handle_message" below.
+    4) On validation errors or missing_fields: save session, return ChatResponse
+       with draft text (no preview MCP).
+    5) MCP #2 — det_preview_request when intake is valid and complete.
+    6) Save session with preview + pending_approval; return ChatResponse with
+       Approve / Open Form / Cancel blocks.
+
+approve(self, *, session_key, slack_user=None) -> ChatResponse
+
+  Loads session by session_key (from Slack block button value).
+  Requires approval_state == "pending_approval".
+
+  Write authorization:
+    - Generates secrets.token_urlsafe(24) as token; stores on session.
+    - write_env = {"DET_MCP_WRITE_TOKEN": token}
+    - Passes approval_token=token in tool arguments AND extra_env=write_env so
+      mcp_server._require_write_approval succeeds inside the child process.
+
+  MCP sequence:
+    1) det_validate_intake — no extra_env (read-only on server).
+    2) det_commit_intake_to_github — extra_env=write_env
+    3) det_create_hcp_project — extra_env=write_env
+  Each call_tool is a separate subprocess (see docs/mcpclient.txt).
+
+  On invalid validation after approve click: draft state, error message.
+  On github_result status not in {committed, dry_run}: draft state, error text.
+  On exception: draft state, failure message.
+  On success: approval_state = submitted, save, return _write_result_text.
+
+cancel(self, *, session_key) -> ChatResponse
+
+  store.reset(session_key). No MCP calls.
+
+has_session(self, *, team_id, channel_id, user_id, thread_ts) -> bool
+
+  Delegates to store.exists(...). No MCP.
+
+find_thread_session(self, *, channel_id, thread_ts, user_id=None, team_id=None)
+
+  Delegates to store.find_thread_session(...). Used by main.py message handler
+  to continue thread-based chats. No MCP.
+
+-------------------------------------------------------------------------------
+Private method
+-------------------------------------------------------------------------------
+
+_extract_updates(self, text, current_intake) -> dict
+
+  Combines _deterministic_extract(text) with _openai_extract(text, current_intake)
+  via merge_intake_updates when AI returns a dict. No MCP.
+
+================================================================================
+How DetChatOrchestrator calls MCP (self.mcp.call_tool)
+================================================================================
+
+All MCP traffic goes through:
+  self.mcp.call_tool(name: str, arguments: dict[, extra_env: dict])
+
+Tool names and arguments match @mcp.tool handlers in mcp_server.py.
+
+-------------------------------------------------------------------------------
+In handle_message
+-------------------------------------------------------------------------------
+
+Call 1 — after intake merge/normalize:
+  name:   "det_validate_intake"
+  args:   {"candidate": session.candidate_intake}
+  env:    (none; child inherits process os.environ only)
+
+  On success dict: updates session.candidate_intake from validation["intake"].
+  On MCP exception: ChatResponse with error string.
+
+Call 2 — only if validation has no errors and no missing_fields:
+  name:   "det_preview_request"
+  args:   {"candidate": session.candidate_intake,
+            "slack_user": slack_user or {"id": user_id}}
+
+  On success: session.preview set; approval_state pending_approval.
+  On MCP exception: ChatResponse with error string.
+
+-------------------------------------------------------------------------------
+In approve
+-------------------------------------------------------------------------------
+
+Call 1:
+  name:   "det_validate_intake"
+  args:   {"candidate": session.candidate_intake}
+  env:    (default child env only)
+
+Call 2 (only if validation["valid"]):
+  name:   "det_commit_intake_to_github"
+  args:   {"candidate": session.candidate_intake,
+            "slack_user": slack_user or {"id": session.user_id},
+            "approval_token": token}
+  env:    extra_env = {"DET_MCP_WRITE_TOKEN": token}
+
+Call 3 (after GitHub success path):
+  name:   "det_create_hcp_project"
+  args:   {"candidate": session.candidate_intake,
+            "approval_token": token}
+  env:    extra_env = {"DET_MCP_WRITE_TOKEN": token}
+
+This orchestrator never calls (by name):
+  det_get_intake_schema, det_normalize_project, det_commit (other variants),
+  or MCP resources — those exist on the server for other clients.
+
+================================================================================
+Module-level helpers (no self; not MCP)
+================================================================================
+
+_openai_extract(text, current_intake) -> dict
+  If AI_PROVIDER allows Openai and OPENAI_API_KEY or AI_API_KEY is set,
+  calls OpenAI chat.completions JSON mode to extract intake_updates; merges
+  constraints from det_intake constants. On failure or missing deps, returns {}.
+
+_deterministic_extract(text) -> dict
+  Regex/heuristic extraction for environments, regions, vpc_model, team_dl,
+  members (<@USER>), project_name, service_name, business_justification.
+
+_extract_labeled_value(text, labels=..., stop_at_sentence=...) -> str
+  Shared label-based parsing for deterministic extract.
+
+_trim_extracted_value(value, stop_at_sentence=...) -> str
+  Truncates extracted strings at natural delimiters.
+
+_approval_blocks(session_key, preview_text) -> list[dict]
+  Slack Block Kit: section + actions (Approve / Open Form / Cancel) with
+  session_key in button values.
+
+_plain_text_preview(preview) -> str
+  Short fallback line for ChatResponse.text when blocks carry detail.
+
+_write_result_text(github_result, hcp_result) -> str
+  Formats post-approval summary from MCP tool return dicts (status, path,
+  branch, url, dry_run messaging).
+
+_draft_text(intake) -> str
+  Human-readable bullet list of current normalized intake fields.
+
+_intro_text() -> str
+  Static onboarding help string.
+
+_strip_bot_mentions(text) -> str
+  Removes <@BOTID> substrings.
+
+_is_reset(text) -> bool
+  True for reset / cancel / start over / restart.
+
+_dry_run_enabled() -> bool
+  Reads DET_DRY_RUN (same semantics as mcp_server helper).
+
+_truncate_for_slack(text, limit=2900) -> str
+  Caps mrkdwn length for Slack section blocks.
+
+================================================================================
+Environment variables used by this module (non-MCP paths)
+================================================================================
+
+AI_PROVIDER           Default "openai"; "", "none", "disabled" skips OpenAI.
+OPENAI_API_KEY / AI_API_KEY   For _openai_extract.
+AI_MODEL              Default "gpt-4o-mini".
+DET_DRY_RUN           For user-facing note in preview (_dry_run_enabled).
+
+MCP child processes still inherit the same os.environ for GITHUB_TOKEN,
+DET_DRY_RUN, etc., when extra_env is not overriding (see mcp_server.txt).
+
+================================================================================
+Related documentation
+================================================================================
+
+docs/process.md       End-to-end flow main.py → orchestrator → MCP client/server
+docs/mcpclient.txt    LocalMcpClient / call_tool / subprocess per call
+docs/mcpserver.txt    Tool names, arguments, write token, dry-run on server
+
+================================================================================
+End of document
+================================================================================

@@ -1,0 +1,36 @@
+# AWS Configuration
+aws_region  = "us-east-1"
+environment = "prod"
+
+# Project Configuration
+project_name = "det-onboarding"
+
+# GitHub Configuration
+github_token       = "ghp_your_github_token_here"
+github_owner       = "your-github-org"
+github_repo        = "your-terraform-repo"
+github_base_branch = "main"
+
+# HCP Terraform Configuration
+hcp_terraform_token                      = "your_hcp_terraform_token"
+hcp_terraform_org                        = "your-hcp-org"
+hcp_terraform_url                        = "https://app.terraform.io"
+hcp_terraform_vcs_oauth_token_id         = "ot-xxxxxxxxxxxxx"
+hcp_terraform_github_app_installation_id = ""  # Optional, use if not using OAuth token
+hcp_tfc_aws_run_role_arn                 = "arn:aws:iam::123456789012:role/HCP-terraform-role"
+
+# Slack Configuration
+slack_bot_token = "xoxb-your-slack-bot-token"
+
+# Lambda Configuration
+lambda_runtime     = "python3.12"
+lambda_memory_size = 512
+lambda_timeout     = 60
+
+# Tags
+tags = {
+  ManagedBy   = "Terraform"
+  Project     = "DET-Onboarding"
+  Environment = "prod"
+  Team        = "DevOps"
+}

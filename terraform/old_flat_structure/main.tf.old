@@ -1,0 +1,57 @@
+terraform {
+  required_version = ">= 1.5.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.4"
+    }
+  }
+
+  # Uncomment and configure for remote state
+  # backend "s3" {
+  #   bucket         = "your-terraform-state-bucket"
+  #   key            = "det-onboarding/terraform.tfstate"
+  #   region         = "us-east-1"
+  #   encrypt        = true
+  #   dynamodb_table = "terraform-state-lock"
+  # }
+}
+
+provider "aws" {
+  region = var.aws_region
+
+  default_tags {
+    tags = var.tags
+  }
+}
+
+# Data sources
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
+# Local variables
+locals {
+  account_id = data.aws_caller_identity.current.account_id
+  region     = data.aws_region.current.name
+  name_prefix = "${var.project_name}-${var.environment}"
+
+  common_env_vars = {
+    GITHUB_TOKEN                             = var.github_token
+    GITHUB_OWNER                             = var.github_owner
+    GITHUB_REPO                              = var.github_repo
+    GITHUB_BASE_BRANCH                       = var.github_base_branch
+    HCP_TERRAFORM_TOKEN                      = var.hcp_terraform_token
+    HCP_TERRAFORM_ORG                        = var.hcp_terraform_org
+    HCP_TERRAFORM_URL                        = var.hcp_terraform_url
+    HCP_TERRAFORM_VCS_OAUTH_TOKEN_ID         = var.hcp_terraform_vcs_oauth_token_id
+    HCP_TERRAFORM_GITHUB_APP_INSTALLATION_ID = var.hcp_terraform_github_app_installation_id
+    HCP_TFC_AWS_RUN_ROLE_ARN                 = var.hcp_tfc_aws_run_role_arn
+    DYNAMODB_TABLE                           = aws_dynamodb_table.executions.name
+    SLACK_BOT_TOKEN                          = var.slack_bot_token
+  }
+}

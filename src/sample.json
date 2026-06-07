@@ -1,0 +1,25 @@
+{
+  "request_id": "det-aws-platform-e2e-dev",
+  "aft": {
+    "control_tower_parameters": {
+      "AccountEmail": "det-aws-platform-e2e-dev@salesforce.com",
+      "AccountName": "DET AWS Platform e2e Dev",
+      "ManagedOrganizationalUnit": "Dev (ou-fefj-m2v0wwkm)",
+      "SSOUserEmail": "siva.eiplocalbb@salesforce.com",
+      "SSOUserFirstName": "Kyrylo",
+      "SSOUserLastName": "Ushkalov"
+    },
+    "custom_fields": {
+      "github_actions_subject_patterns": ["repo:SF-BT-NonProd/edd-platform-aws-sample-lambda:ref:refs/heads/main"],
+      "enable_private_dns_rfc": true,
+      "project_name": "det-aws-platform-e2e",
+      "terraform_cloud_project": "DET AWS Platform e2e",
+      "region": "us-east-1",
+      "vpc_size": "small"
+    },
+    "change_management_parameters": {
+      "change_requested_by": "Kyrylo Ushkalov",
+      "change_reason": "E2E"
+    }
+  }
+}
