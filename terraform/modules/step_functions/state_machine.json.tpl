@@ -1,30 +1,11 @@
 {
   "Comment": "DET Onboarding Workflow with Status Tracking",
-  "StartAt": "InitializeTracking",
+  "StartAt": "ValidateIntake",
   "States": {
-    "InitializeTracking": {
-      "Type": "Task",
-      "Resource": "${status_tracker_arn}",
-      "Comment": "Create initial execution record",
-      "Parameters": {
-        "action": "start",
-        "execution_id.$": "$$.Execution.Name",
-        "intake.$": "$.intake",
-        "slack_channel.$": "$.slack_channel",
-        "slack_user.$": "$.slack_user"
-      },
-      "ResultPath": "$.tracking",
-      "Next": "ValidateIntake",
-      "Catch": [{
-        "ErrorEquals": ["States.ALL"],
-        "ResultPath": "$.tracking_error",
-        "Next": "ValidateIntake"
-      }]
-    },
     "ValidateIntake": {
       "Type": "Task",
       "Resource": "${validate_intake_arn}",
-      "Comment": "Validate intake data",
+      "Comment": "Validate intake data (before creating any records)",
       "Retry": [{
         "ErrorEquals": ["States.TaskFailed", "States.Timeout"],
         "IntervalSeconds": 2,
@@ -33,10 +14,38 @@
       }],
       "Catch": [{
         "ErrorEquals": ["States.ALL"],
-        "ResultPath": "$.error",
-        "Next": "TrackValidationFailure"
+        "ResultPath": "$.lambda_error",
+        "Next": "NotifyValidationFailure"
       }],
-      "Next": "TrackValidationSuccess"
+      "Next": "CheckValidation"
+    },
+    "CheckValidation": {
+      "Type": "Choice",
+      "Choices": [{
+        "Variable": "$.valid",
+        "BooleanEquals": true,
+        "Next": "InitializeTracking"
+      }],
+      "Default": "NotifyValidationFailure"
+    },
+    "InitializeTracking": {
+      "Type": "Task",
+      "Resource": "${status_tracker_arn}",
+      "Comment": "Create initial execution record (only after validation succeeds)",
+      "Parameters": {
+        "action": "start",
+        "execution_id.$": "$$.Execution.Name",
+        "intake.$": "$.intake",
+        "slack_channel.$": "$.slack_channel",
+        "slack_user.$": "$.slack_user"
+      },
+      "ResultPath": "$.tracking",
+      "Next": "TrackValidationSuccess",
+      "Catch": [{
+        "ErrorEquals": ["States.ALL"],
+        "ResultPath": "$.tracking_error",
+        "Next": "TrackValidationSuccess"
+      }]
     },
     "TrackValidationSuccess": {
       "Type": "Task",
@@ -49,41 +58,26 @@
         "result.$": "$.intake"
       },
       "ResultPath": null,
-      "Next": "CheckValidation",
-      "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "CheckValidation"}]
+      "Next": "CreateGitHubBranch",
+      "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "CreateGitHubBranch"}]
     },
-    "TrackValidationFailure": {
+    "NotifyValidationFailure": {
       "Type": "Task",
-      "Resource": "${status_tracker_arn}",
+      "Resource": "${completion_notifier_arn}",
       "Parameters": {
-        "action": "step_update",
         "execution_id.$": "$$.Execution.Name",
-        "step_name": "ValidateIntake",
-        "step_status": "FAILED",
-        "error.$": "$.error.Cause"
+        "status": "FAILED",
+        "slack_channel.$": "$.slack_channel",
+        "slack_user.$": "$.slack_user",
+        "project_name.$": "$.intake.project_name",
+        "validation_errors.$": "$.errors"
       },
-      "ResultPath": null,
-      "Next": "ValidationFailed"
+      "Next": "ValidationFailedEnd"
     },
-    "CheckValidation": {
-      "Type": "Choice",
-      "Choices": [{
-        "Variable": "$.valid",
-        "BooleanEquals": true,
-        "Next": "CreateGitHubBranch"
-      }],
-      "Default": "ValidationFailed"
-    },
-    "ValidationFailed": {
-      "Type": "Task",
-      "Resource": "${status_tracker_arn}",
-      "Parameters": {
-        "action": "fail",
-        "execution_id.$": "$$.Execution.Name",
-        "error": "Validation failed"
-      },
-      "ResultPath": null,
-      "Next": "NotifyFailure"
+    "ValidationFailedEnd": {
+      "Type": "Fail",
+      "Error": "ValidationFailed",
+      "Cause": "Intake validation failed"
     },
     "CreateGitHubBranch": {
       "Type": "Task",

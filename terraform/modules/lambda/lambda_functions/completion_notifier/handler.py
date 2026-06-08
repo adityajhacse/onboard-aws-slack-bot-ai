@@ -49,6 +49,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         project_name = event.get('project_name', 'Unknown Project')
         result = event.get('result', {})
         error = event.get('error')
+        validation_errors = event.get('validation_errors', [])
 
         if not slack_channel:
             logger.warning("No slack_channel provided, skipping notification")
@@ -82,8 +83,10 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             )
             color = 'good'
         else:
+            # Use validation_errors if available (from validation failure), otherwise use error
+            error_detail = validation_errors if validation_errors else error
             message = _build_failure_message(
-                project_name, execution_id, slack_user, error, service_request_id
+                project_name, execution_id, slack_user, error_detail, service_request_id
             )
             color = 'danger'
 
@@ -238,12 +241,16 @@ def _build_failure_message(
     project_name: str,
     execution_id: str,
     slack_user: str,
-    error: str | None,
+    error: str | list | None,
     service_request_id: str = 'N/A',
 ) -> dict[str, Any]:
     """Build failure notification message."""
 
-    error_text = error or "Workflow execution failed. Check CloudWatch logs for details."
+    # Handle both string and list errors (validation_errors is a list)
+    if isinstance(error, list):
+        error_text = '\n'.join(f"• {e}" for e in error) if error else "Validation failed"
+    else:
+        error_text = error or "Workflow execution failed. Check CloudWatch logs for details."
 
     return {
         'text': f"❌ Onboarding failed for *{project_name}*",
