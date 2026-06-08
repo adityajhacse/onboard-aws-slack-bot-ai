@@ -192,13 +192,13 @@ class DetChatOrchestrator:
             return ChatResponse(
                 f"Onboarding workflow started for *{project_name}*!\n\n"
                 f"Execution ID: `{execution_id}`\n\n"
-                f"Running in AWS Step Functions — the workflow will:\n"
+                f"The Process is running in AWS background. It will:\n"
                 f"1. Create GitHub branch and commit intake document\n"
                 f"2. Create HCP Terraform project\n"
                 f"3. Create workspaces for each environment\n"
                 f"4. Configure workspace variables\n\n"
                 f"You'll receive a notification in this channel when it completes.\n"
-                f"Check status with: `/aws-det-status {execution_id}`\n\n"
+                f"Check status with: `/aws-det-onboard-status SR-id`\n\n"
                 f"Session closed. Start a new `/aws-det-onboard` request when needed."
             )
 

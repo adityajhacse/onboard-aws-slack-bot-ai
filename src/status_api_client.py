@@ -189,12 +189,13 @@ def format_pipeline_steps(
     """Format pipeline steps as text."""
     return (
         f"{get_step_emoji(step_validate)} *Validate Intake* - {step_validate}\n"
-        f"{get_step_emoji(step_branch)} *Create GitHub Branch* - {step_branch}\n"
-        f"{get_step_emoji(step_commit)} *Commit to GitHub* - {step_commit}\n"
+        f"{get_step_emoji(step_branch)} *Create GitHub Branch for AFT Account Request* - {step_branch}\n"
+        f"{get_step_emoji(step_commit)} *AFT Account Request Terraform code commit to GitHub* - {step_commit}\n"
         f"{get_step_emoji(step_project)} *Create HCP Project* - {step_project}\n"
         f"{get_step_emoji(step_workspaces)} *Create Workspaces* - {step_workspaces}\n"
         f"{get_step_emoji(step_variables)} *Configure workspaces Variables* - {step_variables}\n"
-        f"{get_step_emoji(step_variables)} *Configure vault stores* - Pending"
+        f"{get_step_emoji(step_variables)} *Configure vault stores* - Pending\n\n"    
+        f"*Please reach out to Platform team for support if you need to re-run the process.*\n"   
     )
 
 
