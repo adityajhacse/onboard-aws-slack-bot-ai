@@ -46,9 +46,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         workspace_names_map = event.get("workspace_names", {})
 
         # Extract execution ID for status tracking
-        execution_id = event.get("execution_id", "")
+        execution_id = event.get("execution_id") or ""
         if execution_id and ":execution:" in execution_id:
             execution_id = execution_id.split(":")[-1]
+
+        # Get DynamoDB helper once
+        db = get_helper() if execution_id else None
 
         # Get HCP config
         token, organization, base_url = _hcp_config()
@@ -81,9 +84,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.info(f"Workspace created: {workspace_display_name} (ID: {workspace_id})")
 
         # Update workspace result in DynamoDB
-        if execution_id:
+        if db:
             try:
-                db = get_helper()
                 db.add_workspace_result(
                     execution_id=execution_id,
                     environment=environment,
@@ -106,11 +108,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.error(f"HCP Terraform error for {event.get('environment')}: {str(e)}", exc_info=True)
 
         # Record workspace failure
-        execution_id = event.get("execution_id", "")
-        if execution_id and ":execution:" in execution_id:
-            execution_id = execution_id.split(":")[-1]
-        if execution_id:
-            try:
+        try:
+            execution_id = event.get("execution_id") or ""
+            if execution_id and ":execution:" in execution_id:
+                execution_id = execution_id.split(":")[-1]
+            if execution_id:
                 from dynamodb_helper import get_helper
                 db = get_helper()
                 db.add_workspace_result(
@@ -121,8 +123,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                     success=False,
                     error=str(e)
                 )
-            except Exception as ex:
-                logger.warning(f"Failed to record workspace failure: {ex}")
+        except Exception as ex:
+            logger.warning(f"Failed to record workspace failure: {ex}")
 
         return {
             "statusCode": 500,
@@ -135,11 +137,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.error(f"Workspace creation error for {event.get('environment')}: {str(e)}", exc_info=True)
 
         # Record workspace failure
-        execution_id = event.get("execution_id", "")
-        if execution_id and ":execution:" in execution_id:
-            execution_id = execution_id.split(":")[-1]
-        if execution_id:
-            try:
+        try:
+            execution_id = event.get("execution_id") or ""
+            if execution_id and ":execution:" in execution_id:
+                execution_id = execution_id.split(":")[-1]
+            if execution_id:
                 from dynamodb_helper import get_helper
                 db = get_helper()
                 db.add_workspace_result(
@@ -150,8 +152,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                     success=False,
                     error=str(e)
                 )
-            except Exception as ex:
-                logger.warning(f"Failed to record workspace failure: {ex}")
+        except Exception as ex:
+            logger.warning(f"Failed to record workspace failure: {ex}")
 
         return {
             "statusCode": 500,

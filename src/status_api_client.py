@@ -193,7 +193,7 @@ def format_pipeline_steps(
         f"{get_step_emoji(step_commit)} *Commit to GitHub* - {step_commit}\n"
         f"{get_step_emoji(step_project)} *Create HCP Project* - {step_project}\n"
         f"{get_step_emoji(step_workspaces)} *Create Workspaces* - {step_workspaces}\n"
-        f"{get_step_emoji(step_variables)} *Configure workspaces Variables* - {step_variables}"
+        f"{get_step_emoji(step_variables)} *Configure workspaces Variables* - {step_variables}\n"
         f"{get_step_emoji(step_variables)} *Configure vault stores* - Pending"
     )
 

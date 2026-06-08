@@ -38,14 +38,16 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         project_slug = intake.get("project_slug", "")
 
         # Extract execution ID and update status
-        execution_id = event.get("execution_id", "")
-        if ":execution:" in execution_id:
+        execution_id = event.get("execution_id") or ""
+        if execution_id and ":execution:" in execution_id:
             execution_id = execution_id.split(":")[-1]
 
+        # Get DynamoDB helper once
+        db = get_helper() if execution_id else None
+
         # Update status to RUNNING
-        if execution_id:
+        if db:
             try:
-                db = get_helper()
                 db.update_step_status(execution_id, "CreateGitHubBranch", "RUNNING")
             except Exception as e:
                 logger.warning(f"Failed to update status to RUNNING: {e}")
@@ -70,7 +72,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.info(f"Branch '{branch_name}' ready")
 
         # Update status to SUCCEEDED
-        if execution_id:
+        if db:
             try:
                 db.update_step_status(
                     execution_id,
@@ -96,16 +98,16 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.error(f"GitHub API error: {str(e)}", exc_info=True)
 
         # Update status to FAILED
-        execution_id = event.get("execution_id", "")
-        if ":execution:" in execution_id:
-            execution_id = execution_id.split(":")[-1]
-        if execution_id:
-            try:
+        try:
+            execution_id = event.get("execution_id") or ""
+            if execution_id and ":execution:" in execution_id:
+                execution_id = execution_id.split(":")[-1]
+            if execution_id:
                 from dynamodb_helper import get_helper
                 db = get_helper()
                 db.update_step_status(execution_id, "CreateGitHubBranch", "FAILED", error=str(e))
-            except Exception as ex:
-                logger.warning(f"Failed to update status to FAILED: {ex}")
+        except Exception as ex:
+            logger.warning(f"Failed to update status to FAILED: {ex}")
 
         return {
             "statusCode": 500,
@@ -121,16 +123,16 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.error(f"Branch creation error: {str(e)}", exc_info=True)
 
         # Update status to FAILED
-        execution_id = event.get("execution_id", "")
-        if ":execution:" in execution_id:
-            execution_id = execution_id.split(":")[-1]
-        if execution_id:
-            try:
+        try:
+            execution_id = event.get("execution_id") or ""
+            if execution_id and ":execution:" in execution_id:
+                execution_id = execution_id.split(":")[-1]
+            if execution_id:
                 from dynamodb_helper import get_helper
                 db = get_helper()
                 db.update_step_status(execution_id, "CreateGitHubBranch", "FAILED", error=str(e))
-            except Exception as ex:
-                logger.warning(f"Failed to update status to FAILED: {ex}")
+        except Exception as ex:
+            logger.warning(f"Failed to update status to FAILED: {ex}")
 
         return {
             "statusCode": 500,

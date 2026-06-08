@@ -88,6 +88,12 @@
     "CreateGitHubBranch": {
       "Type": "Task",
       "Resource": "${github_branch_arn}",
+      "Parameters": {
+        "intake.$": "$.intake",
+        "slack_channel.$": "$.slack_channel",
+        "slack_user.$": "$.slack_user",
+        "execution_id.$": "$$.Execution.Name"
+      },
       "Retry": [{
         "ErrorEquals": ["States.TaskFailed", "States.Timeout"],
         "IntervalSeconds": 3,
@@ -104,6 +110,13 @@
     "CommitToGitHub": {
       "Type": "Task",
       "Resource": "${github_commit_arn}",
+      "Parameters": {
+        "intake.$": "$.intake",
+        "branch_name.$": "$.branch_name",
+        "slack_channel.$": "$.slack_channel",
+        "slack_user.$": "$.slack_user",
+        "execution_id.$": "$$.Execution.Name"
+      },
       "Retry": [{
         "ErrorEquals": ["States.TaskFailed", "States.Timeout"],
         "IntervalSeconds": 3,
@@ -120,6 +133,14 @@
     "CreateHCPProject": {
       "Type": "Task",
       "Resource": "${hcp_project_arn}",
+      "Parameters": {
+        "intake.$": "$.intake",
+        "branch_name.$": "$.branch_name",
+        "file_url.$": "$.file_url",
+        "slack_channel.$": "$.slack_channel",
+        "slack_user.$": "$.slack_user",
+        "execution_id.$": "$$.Execution.Name"
+      },
       "Retry": [{
         "ErrorEquals": ["States.TaskFailed", "States.Timeout"],
         "IntervalSeconds": 3,
