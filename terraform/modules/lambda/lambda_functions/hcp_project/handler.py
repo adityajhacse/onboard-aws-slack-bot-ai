@@ -28,8 +28,23 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     try:
         logger.info("Creating HCP Terraform project")
 
+        from dynamodb_helper import get_helper
+
         intake = event.get("intake", {})
         project_name = intake.get("project_upper", "") or intake.get("project_name", "")
+
+        # Extract execution ID and update status
+        execution_id = event.get("execution_id", "")
+        if ":execution:" in execution_id:
+            execution_id = execution_id.split(":")[-1]
+
+        # Update status to RUNNING
+        if execution_id:
+            try:
+                db = get_helper()
+                db.update_step_status(execution_id, "CreateHCPProject", "RUNNING")
+            except Exception as e:
+                logger.warning(f"Failed to update status to RUNNING: {e}")
 
         if not project_name:
             raise ValueError("Missing project_name in intake data")
@@ -52,6 +67,18 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         logger.info(f"Project created: {project_display_name} (ID: {project_id})")
 
+        # Update status to SUCCEEDED
+        if execution_id:
+            try:
+                db.update_step_status(
+                    execution_id,
+                    "CreateHCPProject",
+                    "SUCCEEDED",
+                    result={"project_id": project_id, "project_name": project_display_name}
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update status to SUCCEEDED: {e}")
+
         return {
             "statusCode": 200,
             "project_id": project_id,
@@ -66,6 +93,19 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     except HcpTerraformError as e:
         logger.error(f"HCP Terraform error: {str(e)}", exc_info=True)
+
+        # Update status to FAILED
+        execution_id = event.get("execution_id", "")
+        if ":execution:" in execution_id:
+            execution_id = execution_id.split(":")[-1]
+        if execution_id:
+            try:
+                from dynamodb_helper import get_helper
+                db = get_helper()
+                db.update_step_status(execution_id, "CreateHCPProject", "FAILED", error=str(e))
+            except Exception as ex:
+                logger.warning(f"Failed to update status to FAILED: {ex}")
+
         return {
             "statusCode": 500,
             "project_id": "",
@@ -78,6 +118,19 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         }
     except Exception as e:
         logger.error(f"Project creation error: {str(e)}", exc_info=True)
+
+        # Update status to FAILED
+        execution_id = event.get("execution_id", "")
+        if ":execution:" in execution_id:
+            execution_id = execution_id.split(":")[-1]
+        if execution_id:
+            try:
+                from dynamodb_helper import get_helper
+                db = get_helper()
+                db.update_step_status(execution_id, "CreateHCPProject", "FAILED", error=str(e))
+            except Exception as ex:
+                logger.warning(f"Failed to update status to FAILED: {ex}")
+
         return {
             "statusCode": 500,
             "project_id": "",

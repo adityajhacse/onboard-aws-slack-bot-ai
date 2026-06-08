@@ -157,7 +157,8 @@
         "project_id.$": "$.project_id",
         "project_slug.$": "$.project_slug",
         "terraform_repo.$": "$.terraform_repo",
-        "workspace_names.$": "$.workspace_names"
+        "workspace_names.$": "$.workspace_names",
+        "execution_id.$": "$$.Execution.Name"
       },
       "Iterator": {
         "StartAt": "CreateWorkspace",
@@ -176,7 +177,21 @@
         }
       },
       "ResultPath": "$.workspaces",
-      "Next": "ConfigureVariablesMap"
+      "Next": "TrackWorkspacesSuccess"
+    },
+    "TrackWorkspacesSuccess": {
+      "Type": "Task",
+      "Resource": "${status_tracker_arn}",
+      "Parameters": {
+        "action": "step_update",
+        "execution_id.$": "$$.Execution.Name",
+        "step_name": "CreateWorkspaces",
+        "step_status": "SUCCEEDED",
+        "result.$": "$.workspaces"
+      },
+      "ResultPath": null,
+      "Next": "ConfigureVariablesMap",
+      "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "ConfigureVariablesMap"}]
     },
     "ConfigureVariablesMap": {
       "Type": "Map",
@@ -203,7 +218,21 @@
         }
       },
       "ResultPath": "$.configured_workspaces",
-      "Next": "TrackCompletion"
+      "Next": "TrackVariablesSuccess"
+    },
+    "TrackVariablesSuccess": {
+      "Type": "Task",
+      "Resource": "${status_tracker_arn}",
+      "Parameters": {
+        "action": "step_update",
+        "execution_id.$": "$$.Execution.Name",
+        "step_name": "ConfigureVariables",
+        "step_status": "SUCCEEDED",
+        "result.$": "$.configured_workspaces"
+      },
+      "ResultPath": null,
+      "Next": "TrackCompletion",
+      "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "TrackCompletion"}]
     },
     "TrackCompletion": {
       "Type": "Task",

@@ -72,15 +72,18 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         client = WebClient(token=slack_token)
 
+        # Fetch Service Request ID from DynamoDB
+        service_request_id = _get_service_request_id(execution_id)
+
         # Build notification message
         if status == 'SUCCEEDED':
             message = _build_success_message(
-                project_name, execution_id, slack_user, result
+                project_name, execution_id, slack_user, result, service_request_id
             )
             color = 'good'
         else:
             message = _build_failure_message(
-                project_name, execution_id, slack_user, error
+                project_name, execution_id, slack_user, error, service_request_id
             )
             color = 'danger'
 
@@ -124,11 +127,39 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         }
 
 
+def _get_service_request_id(execution_id: str) -> str:
+    """
+    Fetch Service Request ID from DynamoDB.
+
+    Args:
+        execution_id: Execution identifier
+
+    Returns:
+        Service Request ID or 'N/A' if not found
+    """
+    try:
+        from dynamodb_helper import get_helper
+
+        db = get_helper()
+        execution = db.get_execution(execution_id)
+
+        if execution:
+            return execution.get('service_request_id', 'N/A')
+        else:
+            logger.warning(f"Execution {execution_id} not found in DynamoDB")
+            return 'N/A'
+
+    except Exception as e:
+        logger.error(f"Error fetching service_request_id: {e}", exc_info=True)
+        return 'N/A'
+
+
 def _build_success_message(
     project_name: str,
     execution_id: str,
     slack_user: str,
     result: dict[str, Any],
+    service_request_id: str = 'N/A',
 ) -> dict[str, Any]:
     """Build success notification message."""
 
@@ -166,17 +197,37 @@ def _build_success_message(
             },
             {
                 'type': 'section',
-                'text': {
-                    'type': 'mrkdwn',
-                    'text': f"Requested by: <@{slack_user}>\nExecution ID: `{execution_id}`"
-                }
+                'fields': [
+                    {
+                        'type': 'mrkdwn',
+                        'text': f'*🎫 Service Request ID:*\n`{service_request_id}`',
+                    },
+                    {
+                        'type': 'mrkdwn',
+                        'text': f'*👤 Requested By:*\n<@{slack_user}>',
+                    },
+                ],
             },
+            {'type': 'divider'},
             {
                 'type': 'section',
                 'text': {
                     'type': 'mrkdwn',
                     'text': attachment_text,
                 }
+            },
+            {'type': 'divider'},
+            {
+                'type': 'context',
+                'elements': [
+                    {
+                        'type': 'mrkdwn',
+                        'text': (
+                            f'💡 Track future requests with `/aws-det-onboard-status` '
+                            f'and your Service Request ID.'
+                        ),
+                    }
+                ],
             },
         ],
         'attachment_text': attachment_text,
@@ -188,6 +239,7 @@ def _build_failure_message(
     execution_id: str,
     slack_user: str,
     error: str | None,
+    service_request_id: str = 'N/A',
 ) -> dict[str, Any]:
     """Build failure notification message."""
 
@@ -205,11 +257,18 @@ def _build_failure_message(
             },
             {
                 'type': 'section',
-                'text': {
-                    'type': 'mrkdwn',
-                    'text': f"Requested by: <@{slack_user}>\nExecution ID: `{execution_id}`"
-                }
+                'fields': [
+                    {
+                        'type': 'mrkdwn',
+                        'text': f'*🎫 Service Request ID:*\n`{service_request_id}`',
+                    },
+                    {
+                        'type': 'mrkdwn',
+                        'text': f'*👤 Requested By:*\n<@{slack_user}>',
+                    },
+                ],
             },
+            {'type': 'divider'},
             {
                 'type': 'section',
                 'text': {
@@ -222,7 +281,10 @@ def _build_failure_message(
                 'elements': [
                     {
                         'type': 'mrkdwn',
-                        'text': 'Check AWS Step Functions console for detailed execution history.'
+                        'text': (
+                            'Check AWS Step Functions console for detailed execution history. '
+                            f'Use `/aws-det-onboard-status` with ID `{service_request_id}` to check status.'
+                        ),
                     }
                 ]
             },

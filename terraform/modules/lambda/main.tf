@@ -55,6 +55,16 @@ resource "aws_cloudwatch_log_group" "completion_notifier" {
   retention_in_days = 14
 }
 
+resource "aws_cloudwatch_log_group" "status_lookup" {
+  name              = "/aws/lambda/${var.name_prefix}-status-lookup"
+  retention_in_days = 14
+}
+
+resource "aws_cloudwatch_log_group" "validation_notifier" {
+  name              = "/aws/lambda/${var.name_prefix}-validation-notifier"
+  retention_in_days = 14
+}
+
 # Lambda Function: Validate Intake
 data "archive_file" "validate_intake" {
   type        = "zip"
@@ -266,4 +276,56 @@ resource "aws_lambda_function" "completion_notifier" {
   }
 
   depends_on = [aws_cloudwatch_log_group.completion_notifier]
+}
+
+# Lambda Function: Status Lookup
+data "archive_file" "status_lookup" {
+  type        = "zip"
+  source_dir  = "${path.module}/lambda_functions/status_lookup"
+  output_path = "${path.module}/status_lookup.zip"
+}
+
+resource "aws_lambda_function" "status_lookup" {
+  filename         = data.archive_file.status_lookup.output_path
+  function_name    = "${var.name_prefix}-status-lookup"
+  role             = var.lambda_execution_role_arn
+  handler          = "handler.lambda_handler"
+  source_code_hash = data.archive_file.status_lookup.output_base64sha256
+  runtime          = var.lambda_runtime
+  timeout          = 30
+  memory_size      = 256
+
+  layers = [aws_lambda_layer_version.shared_layer.arn]
+
+  environment {
+    variables = var.common_env_vars
+  }
+
+  depends_on = [aws_cloudwatch_log_group.status_lookup]
+}
+
+# Lambda Function: Validation Notifier
+data "archive_file" "validation_notifier" {
+  type        = "zip"
+  source_dir  = "${path.module}/lambda_functions/validation_notifier"
+  output_path = "${path.module}/validation_notifier.zip"
+}
+
+resource "aws_lambda_function" "validation_notifier" {
+  filename         = data.archive_file.validation_notifier.output_path
+  function_name    = "${var.name_prefix}-validation-notifier"
+  role             = var.lambda_execution_role_arn
+  handler          = "handler.lambda_handler"
+  source_code_hash = data.archive_file.validation_notifier.output_base64sha256
+  runtime          = var.lambda_runtime
+  timeout          = 30
+  memory_size      = 256
+
+  layers = [aws_lambda_layer_version.shared_layer.arn]
+
+  environment {
+    variables = var.common_env_vars
+  }
+
+  depends_on = [aws_cloudwatch_log_group.validation_notifier]
 }

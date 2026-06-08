@@ -73,6 +73,24 @@ def aws_det_poc(ack, body, client):
     welcome_page(body, client, body.get("channel_id"))
 
 
+@app.command("/aws-det-onboard-status")
+def aws_det_status(ack, body, client, respond):
+    """Handle /aws-det-onboard-status slash command."""
+    ack()
+
+    user_id = body.get("user_id", "")
+    channel_id = body.get("channel_id", "")
+    text = body.get("text", "").strip()
+
+    # If SR ID provided directly in command
+    if text and text.upper().startswith("SR-"):
+        service_request_id = text.upper()
+        _show_status(client, channel_id, user_id, service_request_id, respond)
+    else:
+        # Prompt for SR ID
+        _prompt_for_service_request_id(client, channel_id, user_id, respond)
+
+
 @app.command("/aws-det-onboard")
 def aws_det_chat(ack, body, client, respond):
     channel_id = (body.get("channel_id") or "").strip()
@@ -171,9 +189,17 @@ def handle_chat_message(ack, body, event, client):
     channel_type = event.get("channel_type")
     channel_id = event.get("channel", "")
     user_id = event.get("user", "")
+    text = event.get("text", "").strip()
     thread_ts = event.get("thread_ts") or event.get("ts") or "default"
     team_id = _team_id(body, event)
     is_chat_session_reply = False
+
+    # Check if this is a Service Request ID lookup
+    if text.upper().startswith("SR-") and len(text) >= 9 and channel_type == "im":
+        service_request_id = text.upper()
+        logging.info(f"User {user_id} checking status for {service_request_id}")
+        _handle_status_lookup_in_dm(client, channel_id, user_id, service_request_id)
+        return
 
     if channel_type != "im":
         if not event.get("thread_ts"):
@@ -635,6 +661,121 @@ def _channel_allowed(channel_id):
     else:
         allowed = {value.strip() for value in raw.split(",") if value.strip()}
     return not allowed or channel_id in allowed
+
+
+def _prompt_for_service_request_id(client, channel_id, user_id, respond):
+    """Prompt user to provide their Service Request ID."""
+    from status_api_client import build_prompt_message
+
+    try:
+        message = build_prompt_message(user_id)
+        respond(
+            text=message['text'],
+            blocks=message['blocks'],
+            response_type='ephemeral',
+        )
+    except Exception as e:
+        logging.error(f"Failed to prompt for SR ID: {e}", exc_info=True)
+        respond(
+            text=f"<@{user_id}> Please provide your Service Request ID (e.g., `SR-20260608-0042`).",
+            response_type='ephemeral',
+        )
+
+
+def _show_status(client, channel_id, user_id, service_request_id, respond):
+    """Query status API and display status for given Service Request ID."""
+    from status_api_client import (
+        StatusApiClient,
+        format_status_message,
+        build_not_found_message,
+        build_error_message,
+    )
+
+    try:
+        # Query status API
+        api_client = StatusApiClient()
+        execution = api_client.get_status(service_request_id)
+
+        if not execution:
+            # SR ID not found
+            message = build_not_found_message(service_request_id, user_id)
+            respond(
+                text=message['text'],
+                blocks=message['blocks'],
+                response_type='ephemeral',
+            )
+            return
+
+        # Found - format and display
+        message = format_status_message(execution, user_id)
+        respond(
+            text=message['text'],
+            blocks=message['blocks'],
+            response_type='ephemeral',
+        )
+
+    except Exception as e:
+        logging.error(f"Status lookup error: {e}", exc_info=True)
+        message = build_error_message(user_id)
+        respond(
+            text=message['text'],
+            blocks=message['blocks'],
+            response_type='ephemeral',
+        )
+
+
+def _handle_status_lookup_in_dm(client, channel_id, user_id, service_request_id):
+    """Handle Service Request ID lookup in direct messages."""
+    from status_api_client import (
+        StatusApiClient,
+        format_status_message,
+        build_not_found_message,
+        build_error_message,
+    )
+
+    try:
+        # Query status API
+        api_client = StatusApiClient()
+        execution = api_client.get_status(service_request_id)
+
+        if not execution:
+            # SR ID not found
+            message = build_not_found_message(service_request_id, user_id)
+            client.chat_postMessage(
+                channel=channel_id,
+                text=message['text'],
+                blocks=message['blocks'],
+            )
+            return
+
+        # Found - format and display
+        message = format_status_message(execution, user_id)
+        client.chat_postMessage(
+            channel=channel_id,
+            text=message['text'],
+            blocks=message['blocks'],
+        )
+
+    except SlackApiError as e:
+        logging.error(f"Slack API error in status lookup: {e}")
+        client.chat_postMessage(
+            channel=channel_id,
+            text=f"❌ <@{user_id}> Error retrieving status. Please try again.",
+        )
+    except Exception as e:
+        logging.error(f"Status lookup error: {e}", exc_info=True)
+        message = build_error_message(user_id)
+        try:
+            client.chat_postMessage(
+                channel=channel_id,
+                text=message['text'],
+                blocks=message['blocks'],
+            )
+        except Exception:
+            client.chat_postMessage(
+                channel=channel_id,
+                text=f"❌ <@{user_id}> An error occurred. Please try again.",
+            )
 
 
 if __name__ == "__main__":

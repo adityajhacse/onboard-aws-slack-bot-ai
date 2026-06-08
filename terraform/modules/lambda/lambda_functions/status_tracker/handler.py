@@ -64,6 +64,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 'statusCode': 200,
                 'tracked': True,
                 'execution_id': execution_id,
+                'service_request_id': record.get('service_request_id'),
                 'action': 'start',
                 'record_created': True,
             }
@@ -86,10 +87,15 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 error=error,
             )
 
+            # Get the service_request_id for return
+            execution = db.get_execution(execution_id)
+            service_request_id = execution.get('service_request_id') if execution else None
+
             return {
                 'statusCode': 200,
                 'tracked': True,
                 'execution_id': execution_id,
+                'service_request_id': service_request_id,
                 'action': 'step_update',
                 'step_name': step_name,
                 'step_status': step_status,

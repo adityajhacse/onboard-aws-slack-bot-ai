@@ -24,6 +24,11 @@ resource "aws_dynamodb_table" "executions" {
     type = "S"
   }
 
+  attribute {
+    name = "service_request_id"
+    type = "S"
+  }
+
   # GSI for querying by Slack channel
   global_secondary_index {
     name            = "slack-channel-index"
@@ -42,6 +47,13 @@ resource "aws_dynamodb_table" "executions" {
   global_secondary_index {
     name            = "status-index"
     hash_key        = "status"
+    projection_type = "ALL"
+  }
+
+  # GSI for querying by Service Request ID
+  global_secondary_index {
+    name            = "service-request-id-index"
+    hash_key        = "service_request_id"
     projection_type = "ALL"
   }
 

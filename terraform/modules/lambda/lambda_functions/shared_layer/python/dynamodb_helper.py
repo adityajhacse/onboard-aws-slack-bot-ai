@@ -6,12 +6,15 @@ Provides functions to track execution status and store service records.
 import json
 import logging
 import os
+import random
+import string
 import time
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 import boto3
+from boto3.dynamodb.conditions import Attr, Key
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
@@ -26,6 +29,18 @@ class DynamoDBHelper:
         self.logs_table_name = os.environ.get('DYNAMODB_LOGS_TABLE', 'det-onboarding-prod-execution-logs')
         self.table = self.dynamodb.Table(self.table_name)
         self.logs_table = self.dynamodb.Table(self.logs_table_name)
+
+    def generate_service_request_id(self) -> str:
+        """
+        Generate human-friendly Service Request ID.
+        Format: SR-YYYYMMDD-XXXX (where XXXX is 4-digit random number)
+
+        Returns:
+            Service Request ID (e.g., SR-20260608-7239)
+        """
+        date_str = datetime.utcnow().strftime('%Y%m%d')
+        random_suffix = random.randint(1000, 9999)
+        return f"SR-{date_str}-{random_suffix}"
 
     def create_execution_record(
         self,
@@ -49,8 +64,12 @@ class DynamoDBHelper:
         now = datetime.utcnow()
         ttl = int((now + timedelta(days=90)).timestamp())
 
+        # Generate user-friendly Service Request ID
+        service_request_id = self.generate_service_request_id()
+
         record = {
             'execution_id': execution_id,
+            'service_request_id': service_request_id,
             'status': 'RUNNING',
             'current_step': 'ValidateIntake',
             'project_name': intake.get('project_name', 'Unknown'),
@@ -61,6 +80,14 @@ class DynamoDBHelper:
             'updated_at': now.isoformat(),
             'ttl': ttl,
             'intake_data': self._convert_to_dynamodb(intake),
+            # Flattened step status columns for easier querying
+            'step_validate_intake': 'PENDING',
+            'step_github_branch': 'PENDING',
+            'step_github_commit': 'PENDING',
+            'step_hcp_project': 'PENDING',
+            'step_workspaces': 'PENDING',
+            'step_variables': 'PENDING',
+            # Nested step structure for detailed tracking
             'steps': {
                 'ValidateIntake': {'status': 'PENDING'},
                 'CreateGitHubBranch': {'status': 'PENDING'},
@@ -99,6 +126,16 @@ class DynamoDBHelper:
             result: Optional result data from step
             error: Optional error message if failed
         """
+        # Map step names to flattened column names
+        step_column_map = {
+            'ValidateIntake': 'step_validate_intake',
+            'CreateGitHubBranch': 'step_github_branch',
+            'CommitToGitHub': 'step_github_commit',
+            'CreateHCPProject': 'step_hcp_project',
+            'CreateWorkspaces': 'step_workspaces',
+            'ConfigureVariables': 'step_variables',
+        }
+
         now = datetime.utcnow()
         update_expression = [
             'current_step = :step',
@@ -111,6 +148,12 @@ class DynamoDBHelper:
             ':step_status': status,
         }
         expression_names = {'#status': 'status'}
+
+        # Update flattened step status column if mapping exists
+        if step_name in step_column_map:
+            flat_column = step_column_map[step_name]
+            update_expression.append(f'{flat_column} = :step_status')
+            logger.info(f"Updating flattened column {flat_column} to {status}")
 
         if result:
             update_expression.append(f'steps.{step_name}.result = :result')
@@ -249,6 +292,53 @@ class DynamoDBHelper:
             return response.get('Item')
         except ClientError as e:
             logger.error(f"Failed to get execution: {e}")
+            return None
+
+    def get_execution_by_service_request_id(
+        self,
+        service_request_id: str,
+    ) -> dict[str, Any] | None:
+        """
+        Get execution record by Service Request ID.
+
+        Args:
+            service_request_id: User-friendly ID (e.g., SR-20260608-0042)
+
+        Returns:
+            Execution record or None if not found
+        """
+        try:
+            # Note: This requires a GSI named 'service-request-id-index'
+            # If GSI doesn't exist yet, fall back to scan (slower but works)
+            try:
+                response = self.table.query(
+                    IndexName='service-request-id-index',
+                    KeyConditionExpression='service_request_id = :sr_id',
+                    ExpressionAttributeValues={':sr_id': service_request_id},
+                    Limit=1,
+                )
+                items = response.get('Items', [])
+                return items[0] if items else None
+            except ClientError as e:
+                error_code = e.response.get('Error', {}).get('Code', '')
+                if error_code == 'ResourceNotFoundException' or 'ResourceNotFoundException' in str(e):
+                    logger.warning(f"GSI not found (error: {error_code}), falling back to scan")
+                    # Fallback to scan if GSI doesn't exist yet
+                    logger.info(f"Scanning table {self.table_name} for service_request_id={service_request_id}")
+                    response = self.table.scan(
+                        FilterExpression=Attr('service_request_id').eq(service_request_id),
+                        Limit=100,  # Scan more items since we're filtering
+                    )
+                    items = response.get('Items', [])
+                    logger.info(f"Scan returned {len(items)} items matching service_request_id")
+                    if items:
+                        logger.info(f"Found item with execution_id: {items[0].get('execution_id')}")
+                    return items[0] if items else None
+                else:
+                    logger.error(f"DynamoDB error: {error_code} - {str(e)}")
+                    raise
+        except ClientError as e:
+            logger.error(f"Failed to get execution by SR ID: {e}")
             return None
 
     def get_executions_by_channel(

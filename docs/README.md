@@ -1,235 +1,199 @@
-# 📚 DET AWS CI/CD Onboarding - Documentation
+# AWS DET Onboarding Bot - Documentation
 
-Welcome to the documentation directory! All project documentation is organized here.
+Welcome to the AWS DET (DevOps Engineering Team) Onboarding Bot documentation.
 
----
+## 📚 Documentation Overview
 
-## 📖 Table of Contents
-
-### Getting Started
-- **[QUICK_START.md](QUICK_START.md)** - Quick setup guide
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Complete deployment instructions
-- **[USER_JOURNEY.md](USER_JOURNEY.md)** - Step-by-step user workflow (19 Lambda executions detailed)
-
-### Architecture & Design
-- **[REFACTORING_SUMMARY.md](REFACTORING_SUMMARY.md)** - Overview of serverless refactoring
-- **[step-functions-architecture.md](step-functions-architecture.md)** - Step Functions technical architecture
-- **[MODULAR_RESTRUCTURE.md](MODULAR_RESTRUCTURE.md)** - Terraform modular architecture details
-- **[FINAL_MODULE_SUMMARY.md](FINAL_MODULE_SUMMARY.md)** - Complete module deployment guide
-
-### Component Details
-- **[LAMBDA_FUNCTIONS_MAPPING.md](LAMBDA_FUNCTIONS_MAPPING.md)** - What each Lambda function does
-- **[DYNAMODB_TRACKING_README.md](DYNAMODB_TRACKING_README.md)** - DynamoDB status tracking quick guide
-- **[dynamodb-status-tracking.md](dynamodb-status-tracking.md)** - Complete DynamoDB schema and usage
-
-### Security & Configuration
-- **[TOKEN_STORAGE_GUIDE.md](TOKEN_STORAGE_GUIDE.md)** - Token security and management
-
-### Migration & Cleanup
-- **[REORGANIZATION_COMPLETE.md](REORGANIZATION_COMPLETE.md)** - Lambda functions reorganization details
-- **[MIGRATION_CLEANUP_GUIDE.md](MIGRATION_CLEANUP_GUIDE.md)** - Migration guide from old to new architecture
-- **[CLEANUP_COMPLETED.md](CLEANUP_COMPLETED.md)** - Summary of cleanup actions
-
-### Project History
-- **[CHANGELOG.md](CHANGELOG.md)** - Version history (1.0.0 → 2.0.0)
-- **[FINAL_DELIVERABLES.md](FINAL_DELIVERABLES.md)** - Complete package summary
+This documentation covers the complete AWS infrastructure onboarding workflow, from Slack bot interaction to automated resource provisioning via Step Functions and Lambda.
 
 ---
 
-## 🎯 Quick Navigation by Role
+## 📖 Available Documents
+
+1. **[QUICK_START.md](QUICK_START.md)** - Get started in 10 minutes
+2. **[USER_JOURNEY.md](USER_JOURNEY.md)** - Complete user workflow walkthrough
+3. **[AI_ORCHESTRATION.md](AI_ORCHESTRATION.md)** - AI-powered chat interface guide
+4. **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture and flow diagram
+5. **README.md** (this file) - Documentation index
+
+---
+
+## 🎯 Quick Navigation
+
+### For New Users
+Start here to understand how to use the system:
+1. [USER_JOURNEY.md](USER_JOURNEY.md) - Learn the complete workflow
+2. [AI_ORCHESTRATION.md](AI_ORCHESTRATION.md) - Use the chat interface
 
 ### For Developers
-Start here to understand the codebase:
-1. [QUICK_START.md](QUICK_START.md) - Get up and running
-2. [LAMBDA_FUNCTIONS_MAPPING.md](LAMBDA_FUNCTIONS_MAPPING.md) - What each function does
-3. [step-functions-architecture.md](step-functions-architecture.md) - How orchestration works
-4. [MODULAR_RESTRUCTURE.md](MODULAR_RESTRUCTURE.md) - Terraform module structure
-
-### For DevOps/SRE
-Deploy and manage infrastructure:
-1. [DEPLOYMENT.md](DEPLOYMENT.md) - Deployment instructions
-2. [FINAL_MODULE_SUMMARY.md](FINAL_MODULE_SUMMARY.md) - Module deployment guide
-3. [TOKEN_STORAGE_GUIDE.md](TOKEN_STORAGE_GUIDE.md) - Security setup
-4. [dynamodb-status-tracking.md](dynamodb-status-tracking.md) - Monitoring and logs
+Deploy and understand the system:
+1. [QUICK_START.md](QUICK_START.md) - Deploy in 10 minutes
+2. [ARCHITECTURE.md](ARCHITECTURE.md) - Understand the technical flow
 
 ### For Product/Business
-Understand the workflow:
-1. [USER_JOURNEY.md](USER_JOURNEY.md) - Complete user experience
-2. [REFACTORING_SUMMARY.md](REFACTORING_SUMMARY.md) - Benefits of new architecture
-3. [CHANGELOG.md](CHANGELOG.md) - Version history and improvements
-
-### For New Team Members
-Onboarding reading order:
-1. [QUICK_START.md](QUICK_START.md) - Quick introduction
-2. [USER_JOURNEY.md](USER_JOURNEY.md) - How the system works
-3. [LAMBDA_FUNCTIONS_MAPPING.md](LAMBDA_FUNCTIONS_MAPPING.md) - Component overview
-4. [MODULAR_RESTRUCTURE.md](MODULAR_RESTRUCTURE.md) - Infrastructure architecture
+Understand the business value:
+1. [USER_JOURNEY.md](USER_JOURNEY.md) - See the complete user experience
+2. [ARCHITECTURE.md](ARCHITECTURE.md) - Understand automation benefits
 
 ---
 
-## 📂 Documentation Categories
+## 🚀 What This System Does
 
-### 🚀 Setup & Deployment (3 docs)
-- QUICK_START.md
-- DEPLOYMENT.md
-- FINAL_MODULE_SUMMARY.md
+The AWS DET Onboarding Bot automates the complete infrastructure provisioning workflow:
 
-### 🏗️ Architecture & Design (3 docs)
-- REFACTORING_SUMMARY.md
-- step-functions-architecture.md
-- MODULAR_RESTRUCTURE.md
+**Input** → User fills a Slack form with project requirements
 
-### 🔧 Component Documentation (3 docs)
-- LAMBDA_FUNCTIONS_MAPPING.md
-- DYNAMODB_TRACKING_README.md
-- dynamodb-status-tracking.md
+**Processing** → Automated workflow creates:
+- GitHub branch with infrastructure documentation
+- HCP Terraform project
+- Terraform workspaces (Dev, QA, Prod)
+- Workspace variables and configurations
 
-### 🔐 Security (1 doc)
-- TOKEN_STORAGE_GUIDE.md
-
-### 📖 User Guides (1 doc)
-- USER_JOURNEY.md
-
-### 🔄 Migration & History (4 docs)
-- REORGANIZATION_COMPLETE.md
-- MIGRATION_CLEANUP_GUIDE.md
-- CLEANUP_COMPLETED.md
-- CHANGELOG.md
-
-### 📦 Summaries (1 doc)
-- FINAL_DELIVERABLES.md
-
-**Total: 16 documentation files**
+**Output** → Fully configured infrastructure ready for deployment
 
 ---
 
-## 🔍 Find Documentation by Topic
+## 🏗️ Architecture Overview
 
-### Infrastructure as Code
-- [MODULAR_RESTRUCTURE.md](MODULAR_RESTRUCTURE.md)
-- [FINAL_MODULE_SUMMARY.md](FINAL_MODULE_SUMMARY.md)
-- [DEPLOYMENT.md](DEPLOYMENT.md)
-
-### Lambda Functions
-- [LAMBDA_FUNCTIONS_MAPPING.md](LAMBDA_FUNCTIONS_MAPPING.md)
-- [REORGANIZATION_COMPLETE.md](REORGANIZATION_COMPLETE.md)
-
-### Step Functions
-- [step-functions-architecture.md](step-functions-architecture.md)
-- [USER_JOURNEY.md](USER_JOURNEY.md)
-
-### DynamoDB
-- [DYNAMODB_TRACKING_README.md](DYNAMODB_TRACKING_README.md)
-- [dynamodb-status-tracking.md](dynamodb-status-tracking.md)
-
-### API Gateway
-- [DEPLOYMENT.md](DEPLOYMENT.md)
-- [USER_JOURNEY.md](USER_JOURNEY.md)
-
-### Security & Tokens
-- [TOKEN_STORAGE_GUIDE.md](TOKEN_STORAGE_GUIDE.md)
-
-### Project Evolution
-- [CHANGELOG.md](CHANGELOG.md)
-- [REFACTORING_SUMMARY.md](REFACTORING_SUMMARY.md)
-- [MIGRATION_CLEANUP_GUIDE.md](MIGRATION_CLEANUP_GUIDE.md)
+```
+Slack User
+    ↓
+/aws-det-poc (form) or /aws-det-onboard (chat)
+    ↓
+API Gateway
+    ↓
+Step Functions (orchestration)
+    ↓
+Lambda Functions (execution)
+    ↓
+DynamoDB (tracking)
+    ↓
+GitHub + HCP Terraform (provisioning)
+    ↓
+Slack Notification (completion)
+```
 
 ---
 
-## 📊 Documentation Stats
+## 💡 Two Ways to Use
 
-- **Total Files:** 16 markdown documents
-- **Total Pages:** ~150 pages (estimated)
-- **Coverage:**
-  - Architecture: ✅ Complete
-  - Setup: ✅ Complete
-  - Components: ✅ Complete
-  - Security: ✅ Complete
-  - Migration: ✅ Complete
-  - User Guides: ✅ Complete
+### 1. Form-Based (Traditional)
+Command: `/aws-det-poc`
+- Opens a structured form in Slack
+- Fill out all fields
+- Submit for processing
 
----
+### 2. Chat-Based (AI-Powered)
+Command: `/aws-det-onboard`
+- Natural language conversation
+- AI extracts requirements from chat
+- Review and approve before submission
 
-## 🔗 Related Documentation
-
-### In terraform/ directory:
-- `../terraform/README.md` - Terraform-specific documentation
-- `../terraform/SETUP_INSTRUCTIONS.md` - Detailed Terraform setup
-
-### In project root:
-- `../README.md` - Main project README
-- `../start_slack_bot.sh` - Slack bot startup script
-
-### In src/ directory:
-- `../src/deprecated/README.md` - Deprecated code explanation
+Details in [AI_ORCHESTRATION.md](AI_ORCHESTRATION.md)
 
 ---
 
-## 📝 Documentation Conventions
+## 📊 System Components
 
-### File Naming
-- `SCREAMING_SNAKE_CASE.md` - Major documentation (USER_JOURNEY.md)
-- `kebab-case.md` - Technical specs (step-functions-architecture.md)
-
-### Document Structure
-1. **Title** - Clear, descriptive
-2. **Introduction** - What this doc covers
-3. **Sections** - Organized with headers
-4. **Examples** - Code snippets, commands
-5. **References** - Links to related docs
-
-### Markdown Features Used
-- ✅ Checkboxes for task lists
-- 📦 Emojis for visual clarity
-- `code blocks` for commands and code
-- Tables for comparisons
-- Links between documents
+| Component | Purpose | Technology |
+|-----------|---------|------------|
+| Slack Bot | User interface | Python + Slack Bolt |
+| API Gateway | Entry point | AWS API Gateway |
+| Step Functions | Workflow orchestration | AWS Step Functions |
+| Lambda Functions | Task execution | Python 3.12 |
+| DynamoDB | Status tracking | AWS DynamoDB |
+| GitHub | Documentation storage | GitHub API |
+| HCP Terraform | Infrastructure management | Terraform Cloud API |
 
 ---
 
-## 🤝 Contributing to Documentation
+## 🔑 Key Features
 
-### Adding New Documentation
-1. Create `.md` file in `docs/`
-2. Follow naming conventions
-3. Add entry to this README.md
-4. Link from related docs
-
-### Updating Existing Documentation
-1. Edit the relevant `.md` file
-2. Update "Last Updated" date
-3. Add to CHANGELOG.md if significant
-
-### Documentation Standards
-- Keep docs up-to-date with code changes
-- Use clear, concise language
-- Include examples and code snippets
-- Link to related documentation
-- Update this README when adding/removing docs
+✅ **Automated Workflow** - End-to-end infrastructure provisioning  
+✅ **Parallel Execution** - Multiple workspaces created simultaneously  
+✅ **Error Recovery** - Automatic retries with exponential backoff  
+✅ **Status Tracking** - Real-time progress updates in DynamoDB  
+✅ **Slack Integration** - Start and monitor from Slack  
+✅ **AI Chat Interface** - Natural language requirements gathering  
+✅ **Audit Trail** - Complete execution history and logs  
+✅ **Cost Efficient** - Pay only for what you use (~$2.24/month for 1000 requests)
 
 ---
 
-## 🔄 Keep Documentation Updated
+## 📈 Typical Workflow Duration
 
-When you:
-- Add a new Lambda function → Update `LAMBDA_FUNCTIONS_MAPPING.md`
-- Change Step Functions → Update `step-functions-architecture.md`
-- Modify Terraform → Update `MODULAR_RESTRUCTURE.md`
-- Add a feature → Update `CHANGELOG.md`
-- Change deployment → Update `DEPLOYMENT.md`
-
----
-
-## 📞 Questions?
-
-If you can't find what you're looking for:
-1. Check the [Table of Contents](#-table-of-contents)
-2. Search by [Topic](#-find-documentation-by-topic)
-3. Browse by [Role](#-quick-navigation-by-role)
-4. Review [Related Documentation](#-related-documentation)
+| Step | Duration | Notes |
+|------|----------|-------|
+| Form submission | 1-2 min | User fills form |
+| Validation | 2-5 sec | Intake validation |
+| GitHub operations | 5-10 sec | Branch + commit |
+| HCP project creation | 3-5 sec | Create project |
+| Workspace creation | 10-15 sec | Parallel execution (Dev, QA, Prod) |
+| Variable configuration | 5-10 sec | Parallel execution |
+| **Total** | **~30-45 sec** | Automated execution time |
 
 ---
 
-**Documentation Status:** ✅ Complete  
-**Last Updated:** June 5, 2026  
+## 🛠️ Prerequisites
+
+To deploy and use this system:
+
+**AWS Requirements:**
+- AWS account with appropriate permissions
+- AWS CLI configured
+- Terraform 1.5+ installed
+
+**Service Tokens:**
+- GitHub Personal Access Token (repo scope)
+- HCP Terraform Token (organization access)
+- Slack Bot Token (bot, commands, chat:write scopes)
+- Slack App Token (connections:write for socket mode)
+
+**Configuration:**
+- Slack app configured with slash commands
+- OAuth tokens for VCS integration
+- DynamoDB tables created
+- Lambda execution roles configured
+
+---
+
+## 📞 Getting Help
+
+1. **Quick Start Issues** → Check [QUICK_START.md](QUICK_START.md) troubleshooting section
+2. **User Workflow Questions** → See [USER_JOURNEY.md](USER_JOURNEY.md) step-by-step guide
+3. **AI Chat Issues** → Review [AI_ORCHESTRATION.md](AI_ORCHESTRATION.md) chat guide
+4. **Technical Issues** → Check [ARCHITECTURE.md](ARCHITECTURE.md) for system design
+
+---
+
+## 🔄 System Status
+
+**Current Version:** 2.0.0  
+**Architecture:** Serverless (API Gateway + Step Functions + Lambda)  
+**Status:** ✅ Production Ready  
+**Last Updated:** June 7, 2026  
 **Maintained By:** DET Platform Team
+
+---
+
+## 📝 Document Index
+
+| Document | Purpose | Audience |
+|----------|---------|----------|
+| README.md | Overview and navigation | Everyone |
+| QUICK_START.md | Setup and deployment | DevOps, Developers |
+| USER_JOURNEY.md | Complete user workflow | Users, Product |
+| AI_ORCHESTRATION.md | Chat interface guide | Users |
+| ARCHITECTURE.md | Technical architecture | Developers, Architects |
+
+---
+
+## 🎯 Next Steps
+
+**If you're a user:** Start with [USER_JOURNEY.md](USER_JOURNEY.md)  
+**If you're deploying:** Start with [QUICK_START.md](QUICK_START.md)  
+**If you're developing:** Start with [ARCHITECTURE.md](ARCHITECTURE.md)
+
+---
+
+**Happy Onboarding! 🚀**

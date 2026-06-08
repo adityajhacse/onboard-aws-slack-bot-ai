@@ -33,3 +33,13 @@ variable "api_gateway_cloudwatch_role_arn" {
   description = "ARN of the IAM role for API Gateway account-wide CloudWatch logging"
   type        = string
 }
+
+variable "status_lookup_lambda_invoke_arn" {
+  description = "Invoke ARN of the status lookup Lambda function"
+  type        = string
+}
+
+variable "status_lookup_lambda_name" {
+  description = "Name of the status lookup Lambda function"
+  type        = string
+}

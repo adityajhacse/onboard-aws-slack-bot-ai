@@ -38,6 +38,26 @@ output "completion_notifier_function_arn" {
   value       = aws_lambda_function.completion_notifier.arn
 }
 
+output "status_lookup_function_arn" {
+  description = "ARN of the status lookup Lambda function"
+  value       = aws_lambda_function.status_lookup.arn
+}
+
+output "status_lookup_function_name" {
+  description = "Name of the status lookup Lambda function"
+  value       = aws_lambda_function.status_lookup.function_name
+}
+
+output "status_lookup_function_invoke_arn" {
+  description = "Invoke ARN of the status lookup Lambda function"
+  value       = aws_lambda_function.status_lookup.invoke_arn
+}
+
+output "validation_notifier_function_arn" {
+  description = "ARN of the validation notifier Lambda function"
+  value       = aws_lambda_function.validation_notifier.arn
+}
+
 output "all_lambda_function_arns" {
   description = "List of all Lambda function ARNs"
   value = [
@@ -48,6 +68,8 @@ output "all_lambda_function_arns" {
     aws_lambda_function.hcp_workspace.arn,
     aws_lambda_function.hcp_vars.arn,
     aws_lambda_function.status_tracker.arn,
-    aws_lambda_function.completion_notifier.arn
+    aws_lambda_function.completion_notifier.arn,
+    aws_lambda_function.status_lookup.arn,
+    aws_lambda_function.validation_notifier.arn
   ]
 }

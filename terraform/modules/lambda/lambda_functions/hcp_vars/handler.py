@@ -34,6 +34,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         workspace_name = event.get("workspace_name", "")
         environment = event.get("environment", "")
 
+        # Note: hcp_vars runs in parallel per workspace, not tracking overall step status here
+        # The Step Functions will handle aggregating results
+
         # Get HCP config
         token, organization, base_url = _hcp_config()
 

@@ -36,10 +36,24 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             build_github_intake_document,
             GitHubApiError
         )
+        from dynamodb_helper import get_helper
 
         intake = event.get("intake", {})
         branch_name = event.get("branch_name", "")
         slack_user_data = {"id": event.get("slack_user", "")}
+
+        # Extract execution ID and update status
+        execution_id = event.get("execution_id", "")
+        if ":execution:" in execution_id:
+            execution_id = execution_id.split(":")[-1]
+
+        # Update status to RUNNING
+        if execution_id:
+            try:
+                db = get_helper()
+                db.update_step_status(execution_id, "CommitToGitHub", "RUNNING")
+            except Exception as e:
+                logger.warning(f"Failed to update status to RUNNING: {e}")
 
         if not branch_name:
             raise ValueError("Missing branch_name from previous step")
@@ -75,6 +89,18 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         logger.info(f"Committed successfully: {file_url}")
 
+        # Update status to SUCCEEDED
+        if execution_id:
+            try:
+                db.update_step_status(
+                    execution_id,
+                    "CommitToGitHub",
+                    "SUCCEEDED",
+                    result={"commit_sha": commit_sha, "file_url": file_url, "file_path": file_path}
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update status to SUCCEEDED: {e}")
+
         return {
             "statusCode": 200,
             "commit_sha": commit_sha,
@@ -90,6 +116,19 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     except GitHubApiError as e:
         logger.error(f"GitHub API error: {str(e)}", exc_info=True)
+
+        # Update status to FAILED
+        execution_id = event.get("execution_id", "")
+        if ":execution:" in execution_id:
+            execution_id = execution_id.split(":")[-1]
+        if execution_id:
+            try:
+                from dynamodb_helper import get_helper
+                db = get_helper()
+                db.update_step_status(execution_id, "CommitToGitHub", "FAILED", error=str(e))
+            except Exception as ex:
+                logger.warning(f"Failed to update status to FAILED: {ex}")
+
         return {
             "statusCode": 500,
             "commit_sha": "",
@@ -102,6 +141,19 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         }
     except Exception as e:
         logger.error(f"Commit error: {str(e)}", exc_info=True)
+
+        # Update status to FAILED
+        execution_id = event.get("execution_id", "")
+        if ":execution:" in execution_id:
+            execution_id = execution_id.split(":")[-1]
+        if execution_id:
+            try:
+                from dynamodb_helper import get_helper
+                db = get_helper()
+                db.update_step_status(execution_id, "CommitToGitHub", "FAILED", error=str(e))
+            except Exception as ex:
+                logger.warning(f"Failed to update status to FAILED: {ex}")
+
         return {
             "statusCode": 500,
             "commit_sha": "",

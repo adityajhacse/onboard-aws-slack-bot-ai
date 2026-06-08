@@ -31,10 +31,24 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.info("Creating GitHub branch")
 
         from github_api import ensure_git_branch, sanitize_git_branch_from_project_name, GitHubApiError
+        from dynamodb_helper import get_helper
 
         intake = event.get("intake", {})
         project_name = intake.get("project_name", "")
         project_slug = intake.get("project_slug", "")
+
+        # Extract execution ID and update status
+        execution_id = event.get("execution_id", "")
+        if ":execution:" in execution_id:
+            execution_id = execution_id.split(":")[-1]
+
+        # Update status to RUNNING
+        if execution_id:
+            try:
+                db = get_helper()
+                db.update_step_status(execution_id, "CreateGitHubBranch", "RUNNING")
+            except Exception as e:
+                logger.warning(f"Failed to update status to RUNNING: {e}")
 
         # Get config from environment
         owner = os.environ.get("GITHUB_OWNER", "").strip()
@@ -55,6 +69,18 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         logger.info(f"Branch '{branch_name}' ready")
 
+        # Update status to SUCCEEDED
+        if execution_id:
+            try:
+                db.update_step_status(
+                    execution_id,
+                    "CreateGitHubBranch",
+                    "SUCCEEDED",
+                    result={"branch_name": branch_name, "repository": f"{owner}/{repo}"}
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update status to SUCCEEDED: {e}")
+
         return {
             "statusCode": 200,
             "branch_name": branch_name,
@@ -68,6 +94,19 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     except GitHubApiError as e:
         logger.error(f"GitHub API error: {str(e)}", exc_info=True)
+
+        # Update status to FAILED
+        execution_id = event.get("execution_id", "")
+        if ":execution:" in execution_id:
+            execution_id = execution_id.split(":")[-1]
+        if execution_id:
+            try:
+                from dynamodb_helper import get_helper
+                db = get_helper()
+                db.update_step_status(execution_id, "CreateGitHubBranch", "FAILED", error=str(e))
+            except Exception as ex:
+                logger.warning(f"Failed to update status to FAILED: {ex}")
+
         return {
             "statusCode": 500,
             "branch_name": "",
@@ -80,6 +119,19 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         }
     except Exception as e:
         logger.error(f"Branch creation error: {str(e)}", exc_info=True)
+
+        # Update status to FAILED
+        execution_id = event.get("execution_id", "")
+        if ":execution:" in execution_id:
+            execution_id = execution_id.split(":")[-1]
+        if execution_id:
+            try:
+                from dynamodb_helper import get_helper
+                db = get_helper()
+                db.update_step_status(execution_id, "CreateGitHubBranch", "FAILED", error=str(e))
+            except Exception as ex:
+                logger.warning(f"Failed to update status to FAILED: {ex}")
+
         return {
             "statusCode": 500,
             "branch_name": "",

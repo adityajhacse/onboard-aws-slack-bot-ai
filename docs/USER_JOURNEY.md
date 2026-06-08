@@ -1,1387 +1,617 @@
-# User Journey - Complete Step-by-Step Flow
+# User Journey - Complete Onboarding Workflow
+
+A step-by-step walkthrough of the complete onboarding process from user submission to infrastructure delivery.
+
+---
 
 ## Overview
 
-This document walks through the complete onboarding journey from the moment a user opens Slack to the final notification.
+This document describes the complete journey from when a user opens Slack to when they receive fully configured infrastructure.
+
+**Total Time:** ~2-3 minutes (form) + 30-45 seconds (automation)
 
 ---
 
-## 🎯 Complete Journey Map
+## Journey Map
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│ USER IN SLACK                                                   │
-│ Types: /aws-det-poc                                            │
-└────────────────────┬────────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ SLACK MODAL OPENS                                               │
-│ User fills form: Project, Environments, VPC size, etc.         │
-└────────────────────┬────────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ USER CLICKS SUBMIT                                              │
-│ Slack app receives form data                                   │
-└────────────────────┬────────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ API GATEWAY                                                     │
-│ POST /onboard                                                   │
-│ Receives: intake data, slack_channel, slack_user               │
-└────────────────────┬────────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ STEP FUNCTIONS STARTS                                           │
-│ Execution ID: abc123-def456                                     │
-│ State Machine: det-onboarding-prod-onboarding-v2               │
-└────────────────────┬────────────────────────────────────────────┘
-                     │
-                     ▼
-        ┌────────────────────────┐
-        │ Lambda Execution Flow  │
-        └────────────────────────┘
-                     │
-    ┌────────────────┼────────────────┐
-    ▼                ▼                ▼
-┌──────┐      ┌──────────┐      ┌─────────┐
-│Step 1│      │Step 2-6  │      │Step 7-8 │
-│Track │ ───▶ │Workflow  │ ───▶ │Notify   │
-└──────┘      └──────────┘      └─────────┘
+User Opens Slack
+       ↓
+   Slash Command
+   (/aws-det-poc or /aws-det-onboard)
+       ↓
+   Fill Form / Chat
+       ↓
+   Submit / Approve
+       ↓
+   API Gateway Receives Request
+       ↓
+   Step Functions Starts
+       ↓
+   8 Lambda Functions Execute
+       ↓
+   Infrastructure Created
+       ↓
+   User Receives Notification
+       ↓
+   Ready to Deploy
 ```
 
 ---
 
-## 📱 Step-by-Step User Journey
+## Step-by-Step Journey
 
-### **Step 0: User Initiates Request**
-
-**Time: T+0 seconds**
+### Step 1: User Opens Slack (T+0 sec)
 
 **User Action:**
 ```
-User opens Slack → Types: /aws-det-poc → Presses Enter
+Opens Slack → Goes to allowed channel → Types command
 ```
 
-**What Happens:**
-1. Slack sends command to your bot server (`main_with_api_gateway.py`)
-2. Bot calls `welcome_page()` function
-3. Slack modal opens with form
+**Two Options:**
 
-**User Sees:**
+#### Option A: Form-Based
 ```
-┌─────────────────────────────────────┐
-│  AWS DET Onboarding Request         │
-├─────────────────────────────────────┤
-│                                     │
-│  Project Name: [____________]       │
-│                                     │
-│  Terraform Repo: [▼ Select repo]   │
-│                                     │
-│  Team Channel: [▼ Select channel]  │
-│                                     │
-│  Environments: ☐ Dev ☐ QA ☐ Prod   │
-│                                     │
-│  Regions: ☐ us-east-1 ☐ us-west-2  │
-│                                     │
-│  VPC Model: ○ Small ○ Medium ○ Big │
-│                                     │
-│  Service Name: [____________]       │
-│                                     │
-│  Business Justification:            │
-│  [_____________________________]    │
-│                                     │
-│  Team DL: [____________@company.com]│
-│                                     │
-│           [Cancel]  [Submit]        │
-└─────────────────────────────────────┘
+/aws-det-poc
+```
+Opens structured form modal
+
+#### Option B: Chat-Based
+```
+/aws-det-onboard Create a Dev project for EMS API
+```
+Starts AI-powered conversation
+
+---
+
+### Step 2: Provide Project Details (T+0 to T+2 min)
+
+#### Form View (Option A)
+
+User sees and fills:
+
+```
+┌─────────────────────────────────────────────┐
+│  DET Onboarding Intake                      │
+├─────────────────────────────────────────────┤
+│                                             │
+│  Project Name: [________________]           │
+│                                             │
+│  Terraform Repo: [▼ Select repository]     │
+│                                             │
+│  Team Channel: [▼ Select channel]          │
+│                                             │
+│  Environments:                              │
+│    ☐ Dev    ☐ QA    ☐ Prod                │
+│                                             │
+│  Regions:                                   │
+│    ☐ us-east-1                             │
+│    ☐ us-west-2                             │
+│    ☐ eu-west-1                             │
+│                                             │
+│  VPC Model:                                 │
+│    ○ Small  ○ Medium  ○ Big                │
+│                                             │
+│  Service Name: [________________]           │
+│                                             │
+│  Business Justification:                    │
+│  [________________________________]         │
+│  [________________________________]         │
+│                                             │
+│  Team DL: [________________@company.com]    │
+│                                             │
+│         [Cancel]         [Submit]           │
+└─────────────────────────────────────────────┘
+```
+
+#### Chat View (Option B)
+
+Conversational flow:
+
+```
+Bot: What's the project name?
+User: EMS
+
+Bot: Which environments? (Dev, QA, Prod)
+User: Dev and Prod
+
+Bot: Which regions?
+User: us-east-1
+
+Bot: VPC size? (Small, Medium, Big)
+User: Small
+
+... (continues for all fields)
 ```
 
 ---
 
-### **Step 1: User Fills & Submits Form**
+### Step 3: Review Summary (T+2 min)
 
-**Time: T+30 seconds** (user filling form)
+Both options show a summary:
 
-**User Action:**
 ```
-Fills form with:
-- Project Name: "EMS Platform"
-- Terraform Repo: "adityajhacse/test"
-- Team Channel: "#ems-team"
-- Environments: [✓] Dev [✓] QA [✓] Prod
-- Regions: [✓] us-east-1
-- VPC Model: ● Small
-- Service Name: "EMS API Service"
-- Business Justification: "New microservice for EMS platform"
-- Team DL: "ems-team@company.com"
-
-Clicks: [Submit]
-```
-
-**What Happens:**
-1. Slack sends form data to bot
-2. Bot extracts intake data
-3. Bot calls API Gateway
-
-**Code Execution:**
-```python
-# File: src/main_with_api_gateway.py
-# Function: handle_det_summary_submit()
-
-@app.view("det_summary_modal")
-def handle_det_summary_submit(ack, body, view, client):
-    # Extract form data
-    full_intake = {
-        "project_name": "EMS Platform",
-        "terraform_repo": "adityajhacse/test",
-        "environments": ["Dev", "QA", "Prod"],
-        "regions": ["us-east-1"],
-        "vpc_model": "Small",
-        "service_name": "EMS API Service",
-        "business_justification": "New microservice for EMS platform",
-        "team_dl": "ems-team@company.com"
-    }
-    
-    # Call API Gateway
-    result = api_client.trigger_onboarding(
-        intake=full_intake,
-        slack_channel="C0123456789",
-        slack_user="U0987654321"
-    )
+┌─────────────────────────────────────────────┐
+│  📋 Review Your Request                     │
+├─────────────────────────────────────────────┤
+│                                             │
+│  Project Name: EMS                          │
+│  Service: EMS API                           │
+│  Environments: Dev, Prod                    │
+│  Regions: us-east-1                         │
+│  VPC Model: Small                           │
+│  Terraform Repo: myorg/ems-infra           │
+│  Team DL: team-ems@company.com             │
+│  Team Channel: #team-ems                    │
+│                                             │
+│  Business Justification:                    │
+│  New EMS service for Q3 launch             │
+│                                             │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━        │
+│                                             │
+│  HCP Project: EMS                           │
+│  Workspaces:                                │
+│    • ems-wspace-dev                        │
+│    • ems-wspace-prod                       │
+│                                             │
+│         [Cancel]         [Submit]           │
+└─────────────────────────────────────────────┘
 ```
 
-**User Sees:**
+**User clicks [Submit]**
+
+---
+
+### Step 4: Submission Received (T+2 min)
+
+**User sees:**
 ```
-Processing your request...
-⏳ Starting onboarding workflow
+⏳ Processing your request...
+```
+
+**Behind the scenes:**
+1. Slack bot validates basic input
+2. Calls API Gateway endpoint
+3. API Gateway triggers Step Functions
+
+---
+
+### Step 5: Workflow Started (T+2 min + 1 sec)
+
+**User receives confirmation:**
+
+```
+✅ Onboarding workflow started!
+
+Execution ID: 8f7a9c2e-1b3d-4f5e-9a8b-7c6d5e4f3a2b
+
+The workflow is running in the background and will:
+  1. ✓ Validate intake data
+  2. ✓ Create GitHub branch
+  3. ✓ Commit intake document
+  4. ✓ Create HCP Terraform project
+  5. ✓ Create Dev workspace
+  6. ✓ Create Prod workspace
+  7. ✓ Configure workspace variables
+
+You'll receive a notification when complete (~30-45 seconds).
+
+Check status: /aws-det-status 8f7a9c2e-1b3d-4f5e-9a8b-7c6d5e4f3a2b
 ```
 
 ---
 
-### **Step 2: API Gateway Receives Request**
+### Step 6: Background Processing (T+2 min to T+2:45 min)
 
-**Time: T+31 seconds**
+While user waits, the system executes:
 
-**HTTP Request:**
-```http
-POST https://abc123.execute-api.us-east-1.amazonaws.com/prod/onboard
-Content-Type: application/json
+#### Phase 1: Validation (2-5 seconds)
 
-{
-  "intake": {
-    "project_name": "EMS Platform",
-    "project_slug": "ems-platform",
-    "project_upper": "EMS-PLATFORM",
-    "terraform_repo": "adityajhacse/test",
-    "team_channel": "ems-team",
-    "environments": ["Dev", "QA", "Prod"],
-    "regions": ["us-east-1"],
-    "vpc_model": "Small",
-    "service_name": "EMS API Service",
-    "business_justification": "New microservice for EMS platform",
-    "team_dl": "ems-team@company.com",
-    "workspace_mode": "default",
-    "workspace_names": {}
-  },
-  "slack_channel": "C0123456789",
-  "slack_user": "U0987654321"
-}
 ```
-
-**What Happens:**
-1. API Gateway validates request
-2. API Gateway invokes Step Functions
-3. Returns execution ARN
-
-**API Response:**
-```json
-{
-  "executionArn": "arn:aws:states:us-east-1:123456789012:execution:det-onboarding-prod-onboarding-v2:abc123-def456",
-  "startDate": "2024-06-05T10:00:00.123Z",
-  "message": "Onboarding workflow started successfully"
-}
-```
-
-**User Sees in Slack:**
-```
-🎉 Onboarding workflow started for EMS Platform
-
-Execution ID: abc123-def456
-Started by: @john.doe
-
-The workflow is processing in the background.
-You'll be notified when it completes.
-```
-
----
-
-### **Step 3: Step Functions Execution Begins**
-
-**Time: T+31.2 seconds**
-
-**Step Functions State Machine Starts:**
-```
-State Machine: det-onboarding-prod-onboarding-v2
-Execution ID: abc123-def456
-Execution ARN: arn:aws:states:us-east-1:123456789012:execution:det-onboarding-prod-onboarding-v2:abc123-def456
-Status: RUNNING
-```
-
-**Initial State:**
-```json
-{
-  "intake": { /* all form data */ },
-  "slack_channel": "C0123456789",
-  "slack_user": "U0987654321"
-}
-```
-
----
-
-## 🔄 Lambda Execution Flow
-
-### **Lambda 1: InitializeTracking (status_tracker)**
-
-**Time: T+31.3 seconds**
-
-**Purpose:** Create initial DynamoDB record
-
-**Input to Lambda:**
-```json
-{
-  "action": "start",
-  "execution_id": "abc123-def456",
-  "intake": { /* all form data */ },
-  "slack_channel": "C0123456789",
-  "slack_user": "U0987654321"
-}
-```
-
-**Lambda Execution:**
-```python
-# File: lambda_functions/status_tracker/handler.py
-
-def lambda_handler(event, context):
-    from dynamodb_helper import get_helper
-    
-    db = get_helper()
-    
-    # Create initial record
-    record = db.create_execution_record(
-        execution_id="abc123-def456",
-        intake=intake_data,
-        slack_channel="C0123456789",
-        slack_user="U0987654321"
-    )
-    
-    return {"statusCode": 200, "tracked": True}
+┌─────────────────────────────────┐
+│  Lambda: validate_intake        │
+├─────────────────────────────────┤
+│  • Check required fields        │
+│  • Validate formats             │
+│  • Normalize data               │
+│  • Create execution record      │
+└─────────────────────────────────┘
 ```
 
 **DynamoDB Record Created:**
 ```json
 {
-  "execution_id": "abc123-def456",
+  "execution_id": "8f7a9c2e-...",
   "status": "RUNNING",
   "current_step": "ValidateIntake",
-  "project_name": "EMS Platform",
-  "project_slug": "ems-platform",
-  "slack_channel": "C0123456789",
-  "slack_user": "U0987654321",
-  "created_at": "2024-06-05T10:00:00.123Z",
-  "updated_at": "2024-06-05T10:00:00.123Z",
-  "ttl": 1712847600,
-  "intake_data": { /* complete form data */ },
-  "steps": {
-    "ValidateIntake": {"status": "PENDING"},
-    "CreateGitHubBranch": {"status": "PENDING"},
-    "CommitToGitHub": {"status": "PENDING"},
-    "CreateHCPProject": {"status": "PENDING"},
-    "CreateWorkspaces": {"status": "PENDING"},
-    "ConfigureVariables": {"status": "PENDING"}
-  },
-  "results": {},
-  "errors": []
+  "project_name": "EMS",
+  "slack_channel": "C12345",
+  "slack_user": "U67890",
+  "created_at": "2026-06-07T10:00:00Z"
 }
 ```
 
-**CloudWatch Log:**
+#### Phase 2: GitHub Operations (5-10 seconds)
+
+**Lambda: github_branch**
 ```
-[INFO] 2024-06-05T10:00:00.123Z Creating execution record
-[INFO] 2024-06-05T10:00:00.456Z Created execution record: abc123-def456
+┌─────────────────────────────────┐
+│  Lambda: github_branch          │
+├─────────────────────────────────┤
+│  • Create branch: ems-onboard   │
+│  • From: main                   │
+│  • Branch created ✓             │
+└─────────────────────────────────┘
+```
+
+**Lambda: github_commit**
+```
+┌─────────────────────────────────┐
+│  Lambda: github_commit          │
+├─────────────────────────────────┤
+│  • Generate intake.yaml         │
+│  • Commit to ems-onboard        │
+│  • File: intake-files/ems.yaml  │
+│  • Commit SHA: abc123... ✓      │
+└─────────────────────────────────┘
+```
+
+#### Phase 3: HCP Project Creation (3-5 seconds)
+
+```
+┌─────────────────────────────────┐
+│  Lambda: hcp_project            │
+├─────────────────────────────────┤
+│  • Project name: EMS            │
+│  • Description: Auto-created    │
+│  • Project ID: prj-abc123 ✓     │
+└─────────────────────────────────┘
+```
+
+#### Phase 4: Workspace Creation - PARALLEL (10-15 seconds)
+
+```
+┌──────────────────────┐   ┌──────────────────────┐
+│ Lambda: hcp_workspace│   │ Lambda: hcp_workspace│
+│ Environment: Dev     │   │ Environment: Prod    │
+├──────────────────────┤   ├──────────────────────┤
+│ • Name: ems-wspace-dev│  │• Name: ems-wspace-prod│
+│ • Execution: remote  │   │ • Execution: remote  │
+│ • VCS: myorg/ems-infra│  │• VCS: myorg/ems-infra│
+│ • Branch: ems-onboard│   │ • Branch: ems-onboard│
+│ • ID: ws-dev123 ✓    │   │ • ID: ws-prod456 ✓   │
+└──────────────────────┘   └──────────────────────┘
+          ↓                            ↓
+    (Runs simultaneously - 10-15 seconds total)
+```
+
+#### Phase 5: Variable Configuration - PARALLEL (5-10 seconds)
+
+```
+┌──────────────────────┐   ┌──────────────────────┐
+│ Lambda: hcp_vars     │   │ Lambda: hcp_vars     │
+│ Workspace: Dev       │   │ Workspace: Prod      │
+├──────────────────────┤   ├──────────────────────┤
+│ • environment=dev    │   │ • environment=prod   │
+│ • region=us-east-1   │   │ • region=us-east-1   │
+│ • vpc_model=small    │   │ • vpc_model=small    │
+│ • project=ems        │   │ • project=ems        │
+│ • Configured ✓       │   │ • Configured ✓       │
+└──────────────────────┘   └──────────────────────┘
+          ↓                            ↓
+    (Runs simultaneously - 5-10 seconds total)
 ```
 
 ---
 
-### **Lambda 2: ValidateIntake (validate_intake)**
+### Step 7: Completion Notification (T+2:45 min)
 
-**Time: T+32 seconds**
+**Lambda: completion_notifier** sends message to Slack:
 
-**Purpose:** Validate form data and normalize values
-
-**Input to Lambda:**
-```json
-{
-  "intake": { /* form data */ },
-  "slack_channel": "C0123456789",
-  "slack_user": "U0987654321",
-  "execution_id": "abc123-def456"
-}
 ```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎉 Onboarding Complete!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**Lambda Execution:**
-```python
-# File: lambda_functions/validate_intake/handler.py
+Project: EMS
+Execution ID: 8f7a9c2e-1b3d-4f5e-9a8b-7c6d5e4f3a2b
+Status: ✅ SUCCESS
+Duration: 42 seconds
 
-def lambda_handler(event, context):
-    from det_intake import validate_intake
-    
-    intake_data = event.get("intake", {})
-    
-    # Validate intake
-    validation_result = validate_intake(intake_data)
-    
-    # Result:
-    # {
-    #   "valid": True,
-    #   "intake": { normalized data },
-    #   "missing_fields": [],
-    #   "errors": []
-    # }
-    
-    if not validation_result["valid"]:
-        return {
-            "statusCode": 400,
-            "valid": False,
-            "missing_fields": validation_result["missing_fields"],
-            "errors": validation_result["errors"]
-        }
-    
-    return {
-        "statusCode": 200,
-        "valid": True,
-        "intake": validation_result["intake"]
-    }
-```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**Validation Checks:**
-1. ✅ Project name present: "EMS Platform"
-2. ✅ Terraform repo valid: "adityajhacse/test"
-3. ✅ Environments valid: ["Dev", "QA", "Prod"]
-4. ✅ Regions valid: ["us-east-1"]
-5. ✅ VPC model valid: "Small"
-6. ✅ Team DL is email: "ems-team@company.com"
+📂 GitHub:
+Branch: ems-onboard
+Commit: abc123def456
+File: https://github.com/myorg/ems-infra/blob/ems-onboard/intake-files/ems.yaml
 
-**Output:**
-```json
-{
-  "statusCode": 200,
-  "valid": true,
-  "intake": {
-    "project_name": "EMS Platform",
-    "project_slug": "ems-platform",
-    "project_upper": "EMS-PLATFORM",
-    /* ... normalized data ... */
-  }
-}
-```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**CloudWatch Log:**
-```
-[INFO] 2024-06-05T10:00:01.000Z Validating intake data
-[INFO] 2024-06-05T10:00:01.123Z Validation successful for project: EMS Platform
+☁️  HCP Terraform:
+Project: EMS (prj-abc123)
+https://app.terraform.io/app/myorg/projects/prj-abc123
+
+Workspaces Created:
+✓ ems-wspace-dev (ws-dev123)
+  https://app.terraform.io/app/myorg/workspaces/ems-wspace-dev
+  
+✓ ems-wspace-prod (ws-prod456)
+  https://app.terraform.io/app/myorg/workspaces/ems-wspace-prod
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 Next Steps:
+1. Review intake document in GitHub
+2. Create pull request: ems-onboard → main
+3. Merge after approval
+4. Run Terraform plans in HCP workspaces
+5. Apply infrastructure changes
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Started by: @john.doe
+Completed at: 2026-06-07 10:02:42 UTC
 ```
 
 ---
 
-### **Lambda 3: TrackValidationSuccess (status_tracker)**
+### Step 8: User Takes Next Steps
 
-**Time: T+32.5 seconds**
+**User can now:**
 
-**Purpose:** Update DynamoDB with validation success
+1. **Review GitHub Branch**
+   - Visit branch link
+   - Review intake.yaml file
+   - Verify all settings
 
-**Input:**
-```json
-{
-  "action": "step_update",
-  "execution_id": "abc123-def456",
-  "step_name": "ValidateIntake",
-  "step_status": "SUCCEEDED",
-  "result": { /* validated intake */ }
-}
-```
+2. **Create Pull Request**
+   - Open PR from ems-onboard to main
+   - Get team review
+   - Merge when approved
 
-**DynamoDB Update:**
-```json
-{
-  "execution_id": "abc123-def456",
-  "current_step": "CreateGitHubBranch",  // ← Updated
-  "steps": {
-    "ValidateIntake": {
-      "status": "SUCCEEDED",  // ← Updated
-      "started_at": "2024-06-05T10:00:01.000Z",
-      "completed_at": "2024-06-05T10:00:01.500Z"
-    }
-  }
-}
-```
+3. **Access HCP Workspaces**
+   - Click workspace links
+   - Review configurations
+   - Run Terraform plans
+
+4. **Deploy Infrastructure**
+   - Queue Terraform plan
+   - Review changes
+   - Apply when ready
 
 ---
 
-### **Lambda 4: CreateGitHubBranch (github_branch)**
+## Timeline Summary
 
-**Time: T+33 seconds**
+| Time | Step | Duration | Component |
+|------|------|----------|-----------|
+| T+0 | User opens Slack | - | User |
+| T+0-2min | Fill form/chat | 1-2 min | User |
+| T+2min | Submit request | Instant | Slack Bot |
+| T+2min | API call | <1 sec | API Gateway |
+| T+2min | Start workflow | <1 sec | Step Functions |
+| T+2-3min | Validate | 2-5 sec | Lambda |
+| T+3-4min | GitHub ops | 5-10 sec | Lambda |
+| T+4-5min | HCP project | 3-5 sec | Lambda |
+| T+5-6min | Create workspaces | 10-15 sec | Lambda (parallel) |
+| T+6-7min | Configure vars | 5-10 sec | Lambda (parallel) |
+| T+7min | Send notification | 2-3 sec | Lambda |
+| **Total** | **User to Ready** | **~2:45 min** | **End-to-End** |
 
-**Purpose:** Create feature branch in GitHub repository
-
-**Input:**
-```json
-{
-  "intake": { /* validated data */ },
-  "slack_channel": "C0123456789",
-  "slack_user": "U0987654321",
-  "execution_id": "abc123-def456"
-}
-```
-
-**Lambda Execution:**
-```python
-# File: lambda_functions/github_branch/handler.py
-
-def lambda_handler(event, context):
-    from github_api import ensure_git_branch, sanitize_git_branch_from_project_name
-    
-    intake = event.get("intake", {})
-    project_name = intake.get("project_name", "")  # "EMS Platform"
-    
-    # Get GitHub config from environment variables
-    owner = os.environ.get("GITHUB_OWNER")  # "adityajhacse"
-    repo = os.environ.get("GITHUB_REPO")     # "test"
-    token = os.environ.get("GITHUB_TOKEN")   # "ghp_b4cX..."
-    base_branch = "main"
-    
-    # Create safe branch name
-    branch_name = sanitize_git_branch_from_project_name(project_name)
-    # Result: "ems-platform"
-    
-    # Create branch via GitHub API
-    ensure_git_branch(owner, repo, branch_name, base_branch, token)
-    
-    return {
-        "statusCode": 200,
-        "branch_name": "ems-platform",
-        "branch_created": True,
-        "repository": "adityajhacse/test"
-    }
-```
-
-**GitHub API Call:**
-```http
-GET https://api.github.com/repos/adityajhacse/test/git/ref/heads/ems-platform
-Response: 404 (branch doesn't exist)
-
-GET https://api.github.com/repos/adityajhacse/test/git/ref/heads/main
-Response: 200 {"object": {"sha": "abc123..."}}
-
-POST https://api.github.com/repos/adityajhacse/test/git/refs
-Body: {
-  "ref": "refs/heads/ems-platform",
-  "sha": "abc123..."
-}
-Response: 201 Created
-```
-
-**Result:**
-- ✅ Branch created: `ems-platform`
-- ✅ Based on: `main`
-- ✅ Repository: `adityajhacse/test`
-
-**CloudWatch Log:**
-```
-[INFO] 2024-06-05T10:00:02.000Z Creating branch 'ems-platform' in adityajhacse/test from main
-[INFO] 2024-06-05T10:00:02.789Z Branch 'ems-platform' ready
-```
+**User active time:** 1-2 minutes  
+**Automated processing:** 30-45 seconds  
+**Total time:** ~2:45 minutes
 
 ---
 
-### **Lambda 5: TrackGitHubBranchSuccess (status_tracker)**
+## What Gets Created
 
-**Time: T+33.5 seconds**
+### GitHub Resources
+```
+Repository: myorg/ems-infra
+├── Branch: ems-onboard (from main)
+│   └── intake-files/
+│       └── ems.yaml
+│           ├── project_name: EMS
+│           ├── environments: [Dev, Prod]
+│           ├── regions: [us-east-1]
+│           ├── vpc_model: Small
+│           ├── service_name: EMS API
+│           └── ... (all intake data)
+```
 
-**DynamoDB Update:**
+### HCP Terraform Resources
+```
+Organization: myorg
+└── Project: EMS (prj-abc123)
+    ├── Workspace: ems-wspace-dev (ws-dev123)
+    │   ├── VCS Repo: myorg/ems-infra
+    │   ├── Branch: ems-onboard
+    │   ├── Working Dir: ./
+    │   ├── Execution Mode: remote
+    │   ├── Variables:
+    │   │   ├── environment = "dev"
+    │   │   ├── region = "us-east-1"
+    │   │   ├── vpc_model = "small"
+    │   │   └── project_name = "ems"
+    │   └── Auto-apply: disabled
+    │
+    └── Workspace: ems-wspace-prod (ws-prod456)
+        ├── VCS Repo: myorg/ems-infra
+        ├── Branch: ems-onboard
+        ├── Working Dir: ./
+        ├── Execution Mode: remote
+        ├── Variables:
+        │   ├── environment = "prod"
+        │   ├── region = "us-east-1"
+        │   ├── vpc_model = "small"
+        │   └── project_name = "ems"
+        └── Auto-apply: disabled
+```
+
+### DynamoDB Record
 ```json
 {
-  "current_step": "CommitToGitHub",
-  "steps": {
-    "CreateGitHubBranch": {
-      "status": "SUCCEEDED",
-      "result": "ems-platform",
-      "started_at": "2024-06-05T10:00:02.000Z",
-      "completed_at": "2024-06-05T10:00:02.800Z"
-    }
-  }
-}
-```
-
----
-
-### **Lambda 6: CommitToGitHub (github_commit)**
-
-**Time: T+34 seconds**
-
-**Purpose:** Create AFT JSON file and commit to GitHub
-
-**Input:**
-```json
-{
-  "intake": { /* validated data */ },
-  "branch_name": "ems-platform",
-  "slack_channel": "C0123456789",
-  "slack_user": "U0987654321"
-}
-```
-
-**Lambda Execution:**
-```python
-# File: lambda_functions/github_commit/handler.py
-
-def lambda_handler(event, context):
-    from github_api import build_github_intake_document, put_repository_json_file
-    
-    intake = event.get("intake", {})
-    branch_name = event.get("branch_name")  # "ems-platform"
-    slack_user_data = {"id": event.get("slack_user")}
-    
-    # BUILD AFT JSON PAYLOAD
-    file_path, aft_json = build_github_intake_document(intake, slack_user_data)
-    # file_path: "requests/ems-platform-dev.json"
-    # aft_json: { "request_id": "ems-platform-dev", "aft": {...} }
-    
-    # COMMIT TO GITHUB
-    result = put_repository_json_file(
-        owner="adityajhacse",
-        repo="test",
-        path=file_path,
-        data=aft_json,
-        commit_message="DET intake ems-platform-dev",
-        token=os.environ.get("GITHUB_TOKEN"),
-        branch=branch_name
-    )
-    
-    return {
-        "statusCode": 200,
-        "commit_sha": result["commit"]["sha"],
-        "file_url": result["content"]["html_url"],
-        "file_path": file_path,
-        "request_id": "ems-platform-dev"
-    }
-```
-
-**AFT JSON Created:**
-```json
-{
-  "request_id": "ems-platform-dev",
-  "aft": {
-    "control_tower_parameters": {
-      "AccountEmail": "abc@example.com",
-      "AccountName": "EMS Platform Dev",
-      "ManagedOrganizationalUnit": "Dev (ou-1234567890)",
-      "SSOUserEmail": "ems-team@company.com",
-      "SSOUserFirstName": "Aditya",
-      "SSOUserLastName": "jha"
-    },
-    "custom_fields": {
-      "github_actions_subject_patterns": [
-        "repo:SF-BT-NonProd/edd-platform-aws-sample-lambda:ref:refs/heads/main"
-      ],
-      "enable_private_dns_rfc": true,
-      "project_name": "ems-platform",
-      "terraform_cloud_project": "EMS Platform",
-      "region": "us-east-1",
-      "vpc_size": "small"
-    },
-    "change_management_parameters": {
-      "change_requested_by": "U0987654321",
-      "change_reason": "New microservice for EMS platform"
-    }
-  }
-}
-```
-
-**GitHub API Calls:**
-```http
-1. GET file to check if exists
-   GET https://api.github.com/repos/adityajhacse/test/contents/requests/ems-platform-dev.json?ref=ems-platform
-   Response: 404 (new file)
-
-2. Commit file
-   PUT https://api.github.com/repos/adityajhacse/test/contents/requests/ems-platform-dev.json
-   Body: {
-     "message": "DET intake ems-platform-dev",
-     "content": "<base64 encoded JSON>",
-     "branch": "ems-platform"
-   }
-   Response: 201 Created
-```
-
-**Result:**
-- ✅ File created: `requests/ems-platform-dev.json`
-- ✅ Branch: `ems-platform`
-- ✅ Commit SHA: `def456789...`
-- ✅ File URL: `https://github.com/adityajhacse/test/blob/ems-platform/requests/ems-platform-dev.json`
-
-**CloudWatch Log:**
-```
-[INFO] 2024-06-05T10:00:03.000Z Committing requests/ems-platform-dev.json to adityajhacse/test:ems-platform
-[INFO] 2024-06-05T10:00:03.890Z Committed successfully: https://github.com/...
-```
-
----
-
-### **Lambda 7: TrackGitHubCommitSuccess (status_tracker)**
-
-**Time: T+35 seconds**
-
-**DynamoDB Update:**
-```json
-{
-  "current_step": "CreateHCPProject",
-  "steps": {
-    "CommitToGitHub": {
-      "status": "SUCCEEDED",
-      "result": {
-        "file_url": "https://github.com/adityajhacse/test/blob/ems-platform/requests/ems-platform-dev.json",
-        "commit_sha": "def456789..."
-      },
-      "completed_at": "2024-06-05T10:00:03.900Z"
-    }
-  },
-  "results": {
-    "github_file_url": "https://github.com/adityajhacse/test/blob/ems-platform/requests/ems-platform-dev.json"
-  }
-}
-```
-
----
-
-### **Lambda 8: CreateHCPProject (hcp_project)**
-
-**Time: T+36 seconds**
-
-**Purpose:** Create HCP Terraform project
-
-**Input:**
-```json
-{
-  "intake": {
-    "project_upper": "EMS-PLATFORM",
-    "project_name": "EMS Platform"
-  }
-}
-```
-
-**Lambda Execution:**
-```python
-# File: lambda_functions/hcp_project/handler.py
-
-def lambda_handler(event, context):
-    from hcp_terraform import _create_project, _hcp_config
-    
-    intake = event.get("intake", {})
-    project_name = intake.get("project_upper")  # "EMS-PLATFORM"
-    
-    # Get HCP config from environment variables
-    token = os.environ.get("HCP_TERRAFORM_TOKEN")  # "xZ4z56mY..."
-    organization = os.environ.get("HCP_TERRAFORM_ORG")  # "adityajhacse"
-    base_url = "https://app.terraform.io"
-    
-    # CREATE HCP PROJECT
-    project = _create_project(
-        project_name=project_name,
-        token=token,
-        organization=organization,
-        base_url=base_url
-    )
-    
-    return {
-        "statusCode": 200,
-        "project_id": project["id"],      # "prj-abc123xyz789"
-        "project_name": project["name"]   # "EMS-PLATFORM"
-    }
-```
-
-**HCP Terraform API Call:**
-```http
-POST https://app.terraform.io/api/v2/organizations/adityajhacse/projects
-Authorization: Bearer xZ4z56mY...
-Content-Type: application/vnd.api+json
-
-Body:
-{
-  "data": {
-    "type": "projects",
-    "attributes": {
-      "name": "EMS-PLATFORM"
-    }
-  }
-}
-
-Response: 201 Created
-{
-  "data": {
-    "id": "prj-abc123xyz789",
-    "type": "projects",
-    "attributes": {
-      "name": "EMS-PLATFORM",
-      "created-at": "2024-06-05T10:00:04.567Z"
-    }
-  }
-}
-```
-
-**Result:**
-- ✅ HCP Project Created: "EMS-PLATFORM"
-- ✅ Project ID: `prj-abc123xyz789`
-- ✅ Organization: `adityajhacse`
-
-**CloudWatch Log:**
-```
-[INFO] 2024-06-05T10:00:04.000Z Creating project 'EMS-PLATFORM' in HCP org 'adityajhacse'
-[INFO] 2024-06-05T10:00:04.890Z Project created: EMS-PLATFORM (ID: prj-abc123xyz789)
-```
-
----
-
-### **Lambda 9: TrackHCPProjectSuccess (status_tracker)**
-
-**Time: T+37 seconds**
-
-**DynamoDB Update:**
-```json
-{
-  "current_step": "CreateWorkspaces",
-  "steps": {
-    "CreateHCPProject": {
-      "status": "SUCCEEDED",
-      "result": {
-        "project_id": "prj-abc123xyz789",
-        "project_name": "EMS-PLATFORM"
-      }
-    }
-  },
-  "results": {
-    "hcp_project_id": "prj-abc123xyz789"
-  }
-}
-```
-
----
-
-### **Lambdas 10-12: CreateWorkspaces (hcp_workspace) - PARALLEL EXECUTION**
-
-**Time: T+38 seconds** (all 3 run simultaneously)
-
-**Purpose:** Create HCP Terraform workspaces for each environment
-
-#### **Lambda 10a: Dev Workspace**
-
-**Input:**
-```json
-{
-  "environment": "Dev",
-  "project_id": "prj-abc123xyz789",
-  "project_slug": "ems-platform",
-  "terraform_repo": "adityajhacse/test",
-  "workspace_names": {}
-}
-```
-
-**Lambda Execution:**
-```python
-# File: lambda_functions/hcp_workspace/handler.py
-
-def lambda_handler(event, context):
-    from hcp_terraform import _create_workspace, _resolve_workspace_name
-    
-    environment = "Dev"
-    project_id = "prj-abc123xyz789"
-    project_slug = "ems-platform"
-    terraform_repo = "adityajhacse/test"
-    
-    # Determine workspace name
-    workspace_name = _resolve_workspace_name(
-        project_slug=project_slug,
-        environment=environment,
-        workspace_names={}
-    )
-    # Result: "ems-platform-dev"
-    
-    environment_slug = "dev"
-    
-    # CREATE WORKSPACE
-    workspace = _create_workspace(
-        workspace_name=workspace_name,
-        environment_slug=environment_slug,
-        project_id=project_id,
-        terraform_repo=terraform_repo,
-        token=os.environ.get("HCP_TERRAFORM_TOKEN"),
-        organization=os.environ.get("HCP_TERRAFORM_ORG"),
-        base_url="https://app.terraform.io"
-    )
-    
-    return {
-        "statusCode": 200,
-        "workspace_id": workspace["id"],        # "ws-dev123abc"
-        "workspace_name": workspace["name"],    # "ems-platform-dev"
-        "environment": "Dev"
-    }
-```
-
-**HCP API Calls:**
-```http
-1. Ensure branch exists
-   GET https://api.github.com/repos/adityajhacse/test/git/ref/heads/dev
-   Response: 404
-   
-   POST https://api.github.com/repos/adityajhacse/test/git/refs
-   Body: {"ref": "refs/heads/dev", "sha": "abc123..."}
-   Response: 201 Created
-
-2. Create workspace
-   POST https://app.terraform.io/api/v2/organizations/adityajhacse/workspaces
-   Body:
-   {
-     "data": {
-       "type": "workspaces",
-       "attributes": {
-         "name": "ems-platform-dev",
-         "vcs-repo": {
-           "identifier": "adityajhacse/test",
-           "branch": "dev",
-           "oauth-token-id": "ghp_b4cX..."
-         }
-       },
-       "relationships": {
-         "project": {
-           "data": {"id": "prj-abc123xyz789", "type": "projects"}
-         }
-       }
-     }
-   }
-   Response: 201 Created
-```
-
-**Result:**
-- ✅ Workspace: `ems-platform-dev`
-- ✅ Workspace ID: `ws-dev123abc`
-- ✅ VCS Branch: `dev`
-
-#### **Lambda 10b: QA Workspace** (runs in parallel)
-
-**Same process as Dev, creates:**
-- ✅ Workspace: `ems-platform-qa`
-- ✅ Workspace ID: `ws-qa456def`
-- ✅ VCS Branch: `qa`
-
-#### **Lambda 10c: Prod Workspace** (runs in parallel)
-
-**Same process, creates:**
-- ✅ Workspace: `ems-platform-prod`
-- ✅ Workspace ID: `ws-prod789ghi`
-- ✅ VCS Branch: `prod`
-
-**Time taken:** ~5 seconds (all 3 in parallel)
-
-**CloudWatch Logs (3 separate streams):**
-```
-[ws-dev] [INFO] Creating workspace 'ems-platform-dev' for Dev
-[ws-qa]  [INFO] Creating workspace 'ems-platform-qa' for QA
-[ws-prod][INFO] Creating workspace 'ems-platform-prod' for Prod
-[ws-dev] [INFO] Workspace created: ems-platform-dev (ID: ws-dev123abc)
-[ws-qa]  [INFO] Workspace created: ems-platform-qa (ID: ws-qa456def)
-[ws-prod][INFO] Workspace created: ems-platform-prod (ID: ws-prod789ghi)
-```
-
----
-
-### **Lambda 13: TrackWorkspaceComplete (status_tracker)**
-
-**Time: T+43 seconds**
-
-**DynamoDB Update:**
-```json
-{
-  "current_step": "ConfigureVariables",
-  "steps": {
-    "CreateWorkspaces": {
-      "status": "SUCCEEDED",
-      "result": [
-        {"workspace_id": "ws-dev123abc", "workspace_name": "ems-platform-dev", "environment": "Dev"},
-        {"workspace_id": "ws-qa456def", "workspace_name": "ems-platform-qa", "environment": "QA"},
-        {"workspace_id": "ws-prod789ghi", "workspace_name": "ems-platform-prod", "environment": "Prod"}
-      ]
-    }
-  },
-  "results": {
-    "workspaces": {
-      "Dev": {"workspace_id": "ws-dev123abc", "workspace_name": "ems-platform-dev"},
-      "QA": {"workspace_id": "ws-qa456def", "workspace_name": "ems-platform-qa"},
-      "Prod": {"workspace_id": "ws-prod789ghi", "workspace_name": "ems-platform-prod"}
-    }
-  }
-}
-```
-
----
-
-### **Lambdas 14-16: ConfigureVariables (hcp_vars) - PARALLEL EXECUTION**
-
-**Time: T+44 seconds**
-
-**Purpose:** Configure environment variables for each workspace
-
-#### **Lambda 14a: Dev Workspace Variables**
-
-**Input:**
-```json
-{
-  "workspace_id": "ws-dev123abc",
-  "workspace_name": "ems-platform-dev",
-  "environment": "Dev"
-}
-```
-
-**Lambda Execution:**
-```python
-# File: lambda_functions/hcp_vars/handler.py
-
-def lambda_handler(event, context):
-    from hcp_terraform import _set_workspace_env_vars
-    
-    workspace_id = "ws-dev123abc"
-    
-    # SET ENVIRONMENT VARIABLES
-    _set_workspace_env_vars(
-        workspace_id=workspace_id,
-        token=os.environ.get("HCP_TERRAFORM_TOKEN"),
-        base_url="https://app.terraform.io"
-    )
-    
-    return {
-        "statusCode": 200,
-        "workspace_id": workspace_id,
-        "configured": True,
-        "variables_set": ["TFC_AWS_PROVIDER_AUTH", "TFC_AWS_RUN_ROLE_ARN"]
-    }
-```
-
-**HCP API Calls:**
-```http
-1. Set TFC_AWS_PROVIDER_AUTH
-   POST https://app.terraform.io/api/v2/workspaces/ws-dev123abc/vars
-   Body:
-   {
-     "data": {
-       "type": "vars",
-       "attributes": {
-         "key": "TFC_AWS_PROVIDER_AUTH",
-         "value": "true",
-         "category": "env",
-         "hcl": false,
-         "sensitive": false
-       }
-     }
-   }
-   Response: 201 Created
-
-2. Set TFC_AWS_RUN_ROLE_ARN
-   POST https://app.terraform.io/api/v2/workspaces/ws-dev123abc/vars
-   Body:
-   {
-     "data": {
-       "type": "vars",
-       "attributes": {
-         "key": "TFC_AWS_RUN_ROLE_ARN",
-         "value": "arn:aws:iam::916657620953:role/HCP-terraform-role",
-         "category": "env",
-         "hcl": false,
-         "sensitive": false
-       }
-     }
-   }
-   Response: 201 Created
-```
-
-**Result:**
-- ✅ Variable 1: `TFC_AWS_PROVIDER_AUTH = true`
-- ✅ Variable 2: `TFC_AWS_RUN_ROLE_ARN = arn:aws:iam::916657620953:role/HCP-terraform-role`
-
-#### **Lambda 14b: QA Workspace Variables** (parallel)
-Same process for `ws-qa456def`
-
-#### **Lambda 14c: Prod Workspace Variables** (parallel)
-Same process for `ws-prod789ghi`
-
-**Time taken:** ~3 seconds (all 3 in parallel)
-
-**CloudWatch Logs:**
-```
-[ws-dev-vars] [INFO] Setting environment variables for workspace ws-dev123abc
-[ws-qa-vars]  [INFO] Setting environment variables for workspace ws-qa456def
-[ws-prod-vars][INFO] Setting environment variables for workspace ws-prod789ghi
-[ws-dev-vars] [INFO] Variables configured for workspace ems-platform-dev
-[ws-qa-vars]  [INFO] Variables configured for workspace ems-platform-qa
-[ws-prod-vars][INFO] Variables configured for workspace ems-platform-prod
-```
-
----
-
-### **Lambda 17: TrackVariablesComplete (status_tracker)**
-
-**Time: T+47 seconds**
-
-**DynamoDB Update:**
-```json
-{
-  "current_step": "ConfigureVariables",
-  "steps": {
-    "ConfigureVariables": {
-      "status": "SUCCEEDED",
-      "result": [
-        {"workspace_id": "ws-dev123abc", "configured": true},
-        {"workspace_id": "ws-qa456def", "configured": true},
-        {"workspace_id": "ws-prod789ghi", "configured": true}
-      ]
-    }
-  }
-}
-```
-
----
-
-### **Lambda 18: TrackCompletion (status_tracker)**
-
-**Time: T+48 seconds**
-
-**Purpose:** Mark execution as completed
-
-**Input:**
-```json
-{
-  "action": "complete",
-  "execution_id": "abc123-def456",
-  "result": { /* all results from previous steps */ }
-}
-```
-
-**DynamoDB Final Update:**
-```json
-{
-  "execution_id": "abc123-def456",
-  "status": "SUCCEEDED",  // ← Final status
-  "current_step": "ConfigureVariables",
-  "completed_at": "2024-06-05T10:00:18.000Z",  // ← Completion time
-  "steps": {
-    "ValidateIntake": {"status": "SUCCEEDED", "completed_at": "..."},
-    "CreateGitHubBranch": {"status": "SUCCEEDED", "completed_at": "..."},
-    "CommitToGitHub": {"status": "SUCCEEDED", "completed_at": "..."},
-    "CreateHCPProject": {"status": "SUCCEEDED", "completed_at": "..."},
-    "CreateWorkspaces": {"status": "SUCCEEDED", "completed_at": "..."},
-    "ConfigureVariables": {"status": "SUCCEEDED", "completed_at": "..."}
-  },
-  "results": {
-    "project_id": "prj-abc123xyz789",
-    "project_name": "EMS-PLATFORM",
-    "file_url": "https://github.com/adityajhacse/test/blob/ems-platform/requests/ems-platform-dev.json",
-    "branch_name": "ems-platform",
-    "workspaces": {
-      "Dev": {"workspace_id": "ws-dev123abc", "workspace_name": "ems-platform-dev"},
-      "QA": {"workspace_id": "ws-qa456def", "workspace_name": "ems-platform-qa"},
-      "Prod": {"workspace_id": "ws-prod789ghi", "workspace_name": "ems-platform-prod"}
-    },
-    "configured_workspaces": [
-      {"workspace_id": "ws-dev123abc", "configured": true},
-      {"workspace_id": "ws-qa456def", "configured": true},
-      {"workspace_id": "ws-prod789ghi", "configured": true}
-    ]
-  }
-}
-```
-
----
-
-### **Lambda 19: NotifySuccess (completion_notifier)**
-
-**Time: T+49 seconds**
-
-**Purpose:** Send success notification to Slack
-
-**Input:**
-```json
-{
-  "execution_id": "abc123-def456",
+  "execution_id": "8f7a9c2e-1b3d-4f5e-9a8b-7c6d5e4f3a2b",
   "status": "SUCCEEDED",
-  "slack_channel": "C0123456789",
-  "slack_user": "U0987654321",
-  "project_name": "EMS Platform",
-  "result": { /* all results */ }
-}
-```
-
-**Lambda Execution:**
-```python
-# File: lambda_functions/completion_notifier/handler.py
-
-def lambda_handler(event, context):
-    from slack_sdk import WebClient
-    
-    slack_token = os.environ.get("SLACK_BOT_TOKEN")
-    client = WebClient(token=slack_token)
-    
-    # Build success message
-    message = {
-        "text": "🎉 Onboarding completed for EMS Platform",
-        "blocks": [
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": "🎉 Onboarding Complete: EMS Platform"}
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "Requested by: <@U0987654321>\nExecution ID: `abc123-def456`"
-                }
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "✅ Project: *EMS-PLATFORM*\n✅ HCP Project ID: `prj-abc123xyz789`\n✅ GitHub Branch: `ems-platform`\n✅ GitHub File: https://github.com/adityajhacse/test/blob/ems-platform/requests/ems-platform-dev.json\n✅ Workspaces Created: ems-platform-dev, ems-platform-qa, ems-platform-prod"
-                }
-            }
-        ]
+  "project_name": "EMS",
+  "slack_channel": "C12345",
+  "slack_user": "U67890",
+  "created_at": "2026-06-07T10:00:00Z",
+  "completed_at": "2026-06-07T10:00:42Z",
+  "steps": {
+    "ValidateIntake": {"status": "SUCCEEDED"},
+    "CreateGitHubBranch": {"status": "SUCCEEDED"},
+    "CommitToGitHub": {"status": "SUCCEEDED"},
+    "CreateHCPProject": {"status": "SUCCEEDED"},
+    "CreateWorkspaces": {"status": "SUCCEEDED"},
+    "ConfigureVariables": {"status": "SUCCEEDED"}
+  },
+  "result": {
+    "github_branch": "ems-onboard",
+    "github_commit_sha": "abc123def456",
+    "hcp_project_id": "prj-abc123",
+    "workspaces": {
+      "Dev": {"id": "ws-dev123", "name": "ems-wspace-dev"},
+      "Prod": {"id": "ws-prod456", "name": "ems-wspace-prod"}
     }
-    
-    # Send to Slack
-    response = client.chat_postMessage(
-        channel="C0123456789",
-        text=message["text"],
-        blocks=message["blocks"]
-    )
-    
-    return {
-        "statusCode": 200,
-        "notified": True,
-        "message_ts": response["ts"]
-    }
-```
-
-**Slack API Call:**
-```http
-POST https://slack.com/api/chat.postMessage
-Authorization: Bearer xoxb-4909201991235...
-Content-Type: application/json
-
-Body: {
-  "channel": "C0123456789",
-  "text": "🎉 Onboarding completed for EMS Platform",
-  "blocks": [ /* formatted blocks */ ]
-}
-
-Response: 200 OK
-{
-  "ok": true,
-  "ts": "1717582818.123456"
+  }
 }
 ```
 
-**User Sees in Slack:**
+---
+
+## Error Handling
+
+### Scenario: GitHub Rate Limit
+
+**What happens:**
 ```
-┌──────────────────────────────────────────────────┐
-│ 🎉 Onboarding Complete: EMS Platform            │
-├──────────────────────────────────────────────────┤
-│                                                  │
-│ Requested by: @john.doe                         │
-│ Execution ID: `abc123-def456`                   │
-│                                                  │
-│ ✅ Project: *EMS-PLATFORM*                      │
-│ ✅ HCP Project ID: `prj-abc123xyz789`           │
-│ ✅ GitHub Branch: `ems-platform`                │
-│ ✅ GitHub File: https://github.com/...          │
-│ ✅ Workspaces Created: ems-platform-dev,        │
-│    ems-platform-qa, ems-platform-prod           │
-│                                                  │
-└──────────────────────────────────────────────────┘
+Step 2: CreateGitHubBranch fails
+  ↓
+Retry 1 (after 2 seconds)
+  ↓
+Retry 2 (after 4 seconds)
+  ↓
+Retry 3 (after 8 seconds)
+  ↓
+If still failing: Workflow fails
+  ↓
+User notified: "Failed at CreateGitHubBranch: Rate limit exceeded"
+```
+
+### Scenario: One Workspace Fails
+
+**What happens:**
+```
+CreateWorkspaces (parallel):
+  Dev: ✓ Success
+  Prod: ✗ Failed (network timeout)
+  ↓
+Prod workspace retried (up to 3 times)
+  ↓
+If success: Continue normally
+If fail: Workflow continues with partial success
+  ↓
+User notified: "Dev workspace created, Prod failed (see logs)"
 ```
 
 ---
 
-## ⏱️ Complete Timeline Summary
+## User Experience Highlights
 
-| Time | Step | Lambda | Duration | What Happened |
-|------|------|--------|----------|---------------|
-| T+0s | User types command | - | - | `/aws-det-poc` in Slack |
-| T+0s | Modal opens | - | - | User sees form |
-| T+30s | User submits | - | - | Form data collected |
-| T+31s | API Gateway | - | 0.1s | Receives request |
-| T+31s | Step Functions starts | - | 0.1s | Execution begins |
-| T+31s | Initialize | status_tracker | 0.3s | Creates DynamoDB record |
-| T+32s | Validate | validate_intake | 0.5s | Validates form data |
-| T+32s | Track validation | status_tracker | 0.2s | Updates DynamoDB |
-| T+33s | Create branch | github_branch | 0.8s | Creates `ems-platform` branch |
-| T+33s | Track branch | status_tracker | 0.2s | Updates DynamoDB |
-| T+34s | Commit file | github_commit | 0.9s | Creates AFT JSON, commits |
-| T+35s | Track commit | status_tracker | 0.2s | Updates DynamoDB |
-| T+36s | Create project | hcp_project | 0.9s | Creates HCP project |
-| T+37s | Track project | status_tracker | 0.2s | Updates DynamoDB |
-| T+38s | Create workspaces | hcp_workspace × 3 | 5.0s | **PARALLEL**: 3 workspaces |
-| T+43s | Track workspaces | status_tracker | 0.2s | Updates DynamoDB |
-| T+44s | Configure vars | hcp_vars × 3 | 3.0s | **PARALLEL**: 3 configs |
-| T+47s | Track vars | status_tracker | 0.2s | Updates DynamoDB |
-| T+48s | Mark complete | status_tracker | 0.3s | Final DynamoDB update |
-| T+49s | Notify Slack | completion_notifier | 0.5s | Sends success message |
-| **T+49s** | **COMPLETE** | - | **~18 seconds** | **User sees notification** |
+### ✅ Instant Feedback
+- Immediate confirmation after submission
+- Execution ID for tracking
+- Progress updates available
 
-**Total Execution Time:** ~18 seconds (from API Gateway to Slack notification)
+### ✅ Non-Blocking
+- User not waiting for 45 seconds
+- Can continue other work
+- Notification when ready
+
+### ✅ Transparency
+- All steps visible in notification
+- Links to all created resources
+- Full audit trail in DynamoDB
+
+### ✅ Error Recovery
+- Automatic retries
+- Clear error messages
+- Partial success handled gracefully
+
+### ✅ Self-Service
+- No manual intervention needed
+- Fully automated end-to-end
+- User has all links to proceed
 
 ---
 
-## 🎯 What User Can Do Next
+## Common User Paths
 
-### 1. **View GitHub Commit**
-Click link in Slack → Opens:
+### Path 1: Perfect Flow
 ```
-https://github.com/adityajhacse/test/blob/ems-platform/requests/ems-platform-dev.json
-```
-
-### 2. **View HCP Terraform Project**
-Go to: https://app.terraform.io/app/adityajhacse/projects/prj-abc123xyz789
-
-See:
-- Project: EMS-PLATFORM
-- Workspaces: ems-platform-dev, ems-platform-qa, ems-platform-prod
-
-### 3. **Check Workspace Configuration**
-Click any workspace → Settings → Variables
-
-See:
-- `TFC_AWS_PROVIDER_AUTH = true`
-- `TFC_AWS_RUN_ROLE_ARN = arn:aws:iam::916657620953:role/HCP-terraform-role`
-
-### 4. **Query DynamoDB for Status**
-```bash
-aws dynamodb get-item \
-  --table-name det-onboarding-prod-executions \
-  --key '{"execution_id": {"S": "abc123-def456"}}'
+Submit → All steps succeed → Notification in 45 sec → User proceeds
 ```
 
-### 5. **View CloudWatch Logs**
-```bash
-# Step Functions logs
-aws logs tail /aws/states/det-onboarding-prod-onboarding --follow
+### Path 2: Retry Recovery
+```
+Submit → GitHub fails → Auto-retry → Success → Notification
+```
 
-# Lambda logs
-aws logs tail /aws/lambda/det-onboarding-prod-github-commit --follow
+### Path 3: Partial Success
+```
+Submit → Dev works, Prod fails → Notification with partial success
+→ User manually creates Prod workspace or resubmits
+```
+
+### Path 4: Validation Failure
+```
+Submit → Validation fails → Immediate error → User corrects → Resubmit
 ```
 
 ---
 
-## 🚨 Error Handling Examples
+## Monitoring Your Request
 
-### **Scenario 1: Validation Fails**
-
-If user submits incomplete form:
-
-1. `validate_intake` returns `valid: false`
-2. Step Functions goes to `ValidationFailed` state
-3. `status_tracker` marks as `FAILED`
-4. `completion_notifier` sends failure message:
+### Check Status Anytime
 
 ```
-┌──────────────────────────────────────────┐
-│ ❌ Onboarding Failed: EMS Platform       │
-├──────────────────────────────────────────┤
-│ Requested by: @john.doe                 │
-│ Execution ID: `abc123-def456`           │
-│                                          │
-│ Error:                                   │
-│ ```                                      │
-│ Missing required fields:                 │
-│ - team_dl (team email required)         │
-│ ```                                      │
-│                                          │
-│ Check AWS Step Functions console for    │
-│ detailed execution history.              │
-└──────────────────────────────────────────┘
+/aws-det-status 8f7a9c2e-1b3d-4f5e-9a8b-7c6d5e4f3a2b
 ```
 
-### **Scenario 2: GitHub API Rate Limit**
-
-If GitHub rate limit hit:
-
-1. `github_commit` fails with 429 error
-2. Step Functions **RETRIES** (3 attempts with backoff)
-3. Retry 2: Succeeds after 6 seconds
-4. Workflow continues normally
-
-### **Scenario 3: One Workspace Fails**
-
-If QA workspace creation fails:
-
-1. Dev workspace: ✅ Created
-2. QA workspace: ❌ Failed
-3. Prod workspace: ✅ Created (continues anyway)
-4. Result shows partial success
-5. User can fix QA manually
-
----
-
-## 📊 Monitoring Dashboard View
-
-User can build CloudWatch dashboard showing:
-
+**Response:**
 ```
-┌─────────────────────────────────────────┐
-│ DET Onboarding Dashboard                │
-├─────────────────────────────────────────┤
-│                                         │
-│ Total Executions Today: 47              │
-│ Successful: 45 (96%)                    │
-│ Failed: 2 (4%)                          │
-│                                         │
-│ Average Duration: 18.3 seconds          │
-│                                         │
-│ Current Status:                         │
-│ ● Running: 3                            │
-│ ○ Pending: 0                            │
-│                                         │
-│ Recent Executions:                      │
-│ ✅ abc123 - EMS Platform (18s ago)      │
-│ ✅ def456 - CRM Service (2m ago)        │
-│ ❌ ghi789 - Failed validation (5m ago)  │
-│                                         │
-└─────────────────────────────────────────┘
+📊 Execution Status
+
+ID: 8f7a9c2e-1b3d-4f5e-9a8b-7c6d5e4f3a2b
+Status: RUNNING
+Current Step: CreateWorkspaces
+Started: 2026-06-07 10:00:00 UTC
+Duration: 15 seconds
+
+Progress:
+✓ ValidateIntake
+✓ CreateGitHubBranch
+✓ CommitToGitHub
+✓ CreateHCPProject
+⏳ CreateWorkspaces (in progress)
+⌛ ConfigureVariables (pending)
 ```
 
 ---
 
-## 🎉 Summary
+## Summary
 
-**Complete Journey:**
-1. User types `/aws-det-poc` → **0 seconds**
-2. Fills form → **30 seconds**
-3. Submits → **31 seconds**
-4. Workflow executes (8 Lambda functions, some parallel) → **31-49 seconds**
-5. Slack notification received → **49 seconds**
-6. User clicks links to see results → **Done!**
+The user journey is:
+1. **Fast** - 2-3 minutes total, mostly user input
+2. **Automated** - 30-45 seconds of hands-off processing
+3. **Reliable** - Automatic retries and error handling
+4. **Transparent** - Full visibility into progress and results
+5. **Non-blocking** - User notified when ready, no waiting
 
-**Total time:** ~50 seconds from start to notification
-**Lambda executions:** 19 total (6 workflow + 13 tracking/notifications)
-**APIs called:** GitHub (5 calls), HCP Terraform (7 calls), Slack (2 calls)
-**Results:** GitHub branch ✅, AFT JSON ✅, HCP Project ✅, 3 Workspaces ✅, Variables configured ✅
+**Result:** User goes from "I need infrastructure" to "ready to deploy" in under 3 minutes.
 
-Everything tracked in DynamoDB with complete audit trail! 🚀
+---
+
+**That's the complete journey! 🚀**

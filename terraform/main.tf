@@ -115,6 +115,8 @@ module "api_gateway" {
   state_machine_arn               = module.step_functions.state_machine_arn
   api_gateway_role_arn            = module.iam.api_gateway_step_functions_role_arn
   api_gateway_cloudwatch_role_arn = module.iam.api_gateway_cloudwatch_role_arn
+  status_lookup_lambda_invoke_arn = module.lambda.status_lookup_function_invoke_arn
+  status_lookup_lambda_name       = module.lambda.status_lookup_function_name
 
-  depends_on = [module.step_functions]
+  depends_on = [module.step_functions, module.lambda]
 }

@@ -142,11 +142,92 @@ resource "aws_api_gateway_integration_response" "onboard_500" {
   depends_on = [aws_api_gateway_integration.onboard_step_functions]
 }
 
-# API Gateway Resource: /status/{executionArn}
+# API Gateway Resource: /status (for Service Request ID lookup)
 resource "aws_api_gateway_resource" "status" {
   rest_api_id = aws_api_gateway_rest_api.onboarding.id
   parent_id   = aws_api_gateway_rest_api.onboarding.root_resource_id
   path_part   = "status"
+}
+
+# API Gateway Method: GET /status (Lambda-based lookup)
+resource "aws_api_gateway_method" "status_lookup_get" {
+  rest_api_id   = aws_api_gateway_rest_api.onboarding.id
+  resource_id   = aws_api_gateway_resource.status.id
+  http_method   = "GET"
+  authorization = "NONE"
+
+  request_parameters = {
+    "method.request.querystring.service_request_id" = true
+  }
+}
+
+# API Gateway Integration with Status Lookup Lambda
+resource "aws_api_gateway_integration" "status_lookup_lambda" {
+  rest_api_id = aws_api_gateway_rest_api.onboarding.id
+  resource_id = aws_api_gateway_resource.status.id
+  http_method = aws_api_gateway_method.status_lookup_get.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.status_lookup_lambda_invoke_arn
+}
+
+# Lambda permission for API Gateway
+resource "aws_lambda_permission" "status_lookup_api_gateway" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.status_lookup_lambda_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.onboarding.execution_arn}/*/${aws_api_gateway_method.status_lookup_get.http_method}${aws_api_gateway_resource.status.path}"
+}
+
+# CORS for /status
+resource "aws_api_gateway_method" "status_lookup_options" {
+  rest_api_id   = aws_api_gateway_rest_api.onboarding.id
+  resource_id   = aws_api_gateway_resource.status.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "status_lookup_options" {
+  rest_api_id = aws_api_gateway_rest_api.onboarding.id
+  resource_id = aws_api_gateway_resource.status.id
+  http_method = aws_api_gateway_method.status_lookup_options.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = jsonencode({
+      statusCode = 200
+    })
+  }
+}
+
+resource "aws_api_gateway_method_response" "status_lookup_options_200" {
+  rest_api_id = aws_api_gateway_rest_api.onboarding.id
+  resource_id = aws_api_gateway_resource.status.id
+  http_method = aws_api_gateway_method.status_lookup_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "status_lookup_options_200" {
+  rest_api_id = aws_api_gateway_rest_api.onboarding.id
+  resource_id = aws_api_gateway_resource.status.id
+  http_method = aws_api_gateway_method.status_lookup_options.http_method
+  status_code = aws_api_gateway_method_response.status_lookup_options_200.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+
+  depends_on = [aws_api_gateway_integration.status_lookup_options]
 }
 
 resource "aws_api_gateway_resource" "status_execution" {
@@ -274,6 +355,9 @@ resource "aws_api_gateway_deployment" "onboarding" {
       aws_api_gateway_resource.onboard.id,
       aws_api_gateway_method.onboard_post.id,
       aws_api_gateway_integration.onboard_step_functions.id,
+      aws_api_gateway_resource.status.id,
+      aws_api_gateway_method.status_lookup_get.id,
+      aws_api_gateway_integration.status_lookup_lambda.id,
       aws_api_gateway_resource.status_execution.id,
       aws_api_gateway_method.status_get.id,
       aws_api_gateway_integration.status_step_functions.id,
@@ -287,6 +371,7 @@ resource "aws_api_gateway_deployment" "onboarding" {
   depends_on = [
     aws_api_gateway_integration.onboard_step_functions,
     aws_api_gateway_integration_response.onboard_200,
+    aws_api_gateway_integration.status_lookup_lambda,
     aws_api_gateway_integration.status_step_functions,
     aws_api_gateway_integration_response.status_200,
   ]
