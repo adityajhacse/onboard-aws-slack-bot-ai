@@ -31,7 +31,7 @@ def register(app, api_client: ApiGatewayClient) -> None:
     # ------------------------------------------------------------------
 
     @app.command("/aws-det-onboard-chat")
-    def aws_det_chat(ack, body, client, respond):
+    def aws_det_onboard_chat(ack, body, client, respond):
         channel_id = (body.get("channel_id") or "").strip()
         if not _channel_allowed(channel_id):
             ack(

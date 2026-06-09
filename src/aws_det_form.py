@@ -34,7 +34,7 @@ def register(app, api_client: ApiGatewayClient) -> None:
     """Attach all /aws-det-onboard-form form handlers to *app*."""
 
     @app.command("/aws-det-onboard-form")
-    def aws_det_poc(ack, body, client):
+    def aws_det_onboard_form(ack, body, client):
         ack()
         welcome_page(body, client, body.get("channel_id"))
 

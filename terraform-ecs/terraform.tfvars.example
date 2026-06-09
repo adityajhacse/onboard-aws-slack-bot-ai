@@ -1,0 +1,59 @@
+# Copy this file to terraform.tfvars and fill in real values.
+# terraform.tfvars is gitignored — never commit actual secrets.
+
+# ---------------------------------------------------------------------------
+# Infrastructure
+# ---------------------------------------------------------------------------
+aws_region  = "us-west-2"
+environment = "prod"
+
+# ---------------------------------------------------------------------------
+# VPC — choose ONE of the two options below:
+#
+# Option A: Let Terraform create the VPC (sandbox / greenfield)
+#   create_vpc           = true
+#   vpc_cidr             = "10.0.0.0/16"
+#   public_subnet_cidrs  = ["10.0.0.0/24", "10.0.1.0/24"]
+#   private_subnet_cidrs = ["10.0.2.0/24", "10.0.3.0/24"]
+#   # vpc_id and subnet_ids are ignored when create_vpc = true
+#
+# Option B: Use an existing VPC (production / shared network)
+#   create_vpc = false
+#   vpc_id     = "vpc-XXXXXXXXXXXXXXXXX"
+#   subnet_ids = ["subnet-XXXXXXXXXXXXXXXXX", "subnet-YYYYYYYYYYYYYYYYY"]
+# ---------------------------------------------------------------------------
+
+# --- Uncomment Option A (new VPC) ---
+# create_vpc           = true
+# vpc_cidr             = "10.0.0.0/16"
+# public_subnet_cidrs  = ["10.0.0.0/24", "10.0.1.0/24"]
+# private_subnet_cidrs = ["10.0.2.0/24", "10.0.3.0/24"]
+
+# --- Uncomment Option B (existing VPC) ---
+create_vpc  = false
+vpc_id      = "vpc-XXXXXXXXXXXXXXXXX"
+subnet_ids  = ["subnet-XXXXXXXXXXXXXXXXX", "subnet-YYYYYYYYYYYYYYYYY"]
+
+assign_public_ip = false
+
+# ---------------------------------------------------------------------------
+# ECS / Container
+# ---------------------------------------------------------------------------
+ecr_image_uri      = "833608842610.dkr.ecr.us-west-2.amazonaws.com/ssprod-or-slkcb-ecr-repo:slack"
+task_cpu           = 512
+task_memory        = 1024
+desired_count      = 1
+log_retention_days = 30
+
+# ---------------------------------------------------------------------------
+# All application config and secrets
+# Add all key/value pairs directly in AWS Secrets Manager under the secret
+# "ep-foundry-slack/secrets" after running terraform apply.
+#
+# Keys to populate:
+#   SLACK_BOT_TOKEN, SLACK_APP_TOKEN, HCP_TERRAFORM_TOKEN, GITHUB_TOKEN,
+#   OPENAI_API_KEY, AI_API_KEY, DET_ALLOWED_CHANNELS, HCP_TERRAFORM_ORG,
+#   HCP_TERRAFORM_VCS_OAUTH_TOKEN_ID, GITHUB_OWNER, GITHUB_REPO,
+#   GITHUB_BASE_BRANCH, GITHUB_FILE_PATH, AI_PROVIDER, OPENAI_BASE_URL,
+#   AI_MODEL, AI_SSL_VERIFY, DET_DRY_RUN, API_GATEWAY_ENDPOINT, STATUS_API_URL
+# ---------------------------------------------------------------------------
