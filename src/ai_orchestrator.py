@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from api_gateway_client import ApiGatewayClient
 
-_MAX_LLM_ATTEMPTS = 2
+_MAX_LLM_ATTEMPTS = 1
 
 
 class LLMGatewayConnectionError(Exception):
