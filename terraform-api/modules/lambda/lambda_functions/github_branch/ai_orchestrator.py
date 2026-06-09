@@ -857,7 +857,7 @@ def _intro_text() -> str:
         "message, or we can fill it in step by step.\n\n"
         "Follow this <https://salesforce-sandbox2.enterprise.slack.com/docs/T04SR5XV56X/F0B2CDRBUBX|DOC for FAQ on Onboarding process>.\n\n"
         "To start, tell me the project/workload name, environment, and region.\n\n"
-        "Example: `Create a Dev sample project in us-east-1, small VPC, service EMS API, team channel ems-team, github repo my-org/terraform-ems, "
+        "Example: `Create a Dev sample project in us-east-1, small VPC, service EMS API, team channel ems-team, github repo adityajhacse/test, "
         "team DL ems-team@example.com because this is for a new workload.`"
     )
 

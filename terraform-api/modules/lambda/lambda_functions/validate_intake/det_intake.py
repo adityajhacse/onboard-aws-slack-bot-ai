@@ -42,7 +42,7 @@ def intake_schema() -> dict[str, Any]:
             ),
             "intake": {
                 "project_name": "EMS",
-                "terraform_repo": "my-org/terraform-ems",
+                "terraform_repo": "adityajhacse/test",
                 "team_channel": "C0123456789",
                 "workspace_mode": "default",
                 "workspace_names": {"Dev": "ems-dev", "QA": "ems-qa"},

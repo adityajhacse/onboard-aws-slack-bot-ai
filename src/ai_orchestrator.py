@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import re
-import secrets
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,6 +22,13 @@ from session_store import InMemorySessionStore
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from api_gateway_client import ApiGatewayClient
+
+_MAX_LLM_ATTEMPTS = 2
+
+
+class LLMGatewayConnectionError(Exception):
+    """Raised when the LLM gateway cannot be reached after max retries."""
+
 
 @dataclass
 class ChatResponse:
@@ -73,7 +79,14 @@ class DetChatOrchestrator:
             )
 
         session.messages.append({"role": "user", "content": clean_text})
-        updates = self._extract_updates(clean_text, session.candidate_intake)
+        try:
+            updates = self._extract_updates(clean_text, session.candidate_intake)
+        except LLMGatewayConnectionError as exc:
+            error_desc = _format_llm_error(exc)
+            return ChatResponse(
+                text=f"Trouble connecting to LLM gateway. {error_desc}",
+                blocks=_llm_gateway_error_blocks(session.key, error_desc),
+            )
         if updates:
             session.candidate_intake = merge_intake_updates(
                 session.candidate_intake,
@@ -106,7 +119,14 @@ class DetChatOrchestrator:
         missing = validation.get("missing_fields") or []
         if missing:
             self.store.save(session)
-            return ChatResponse(_missing_fields_text(missing, session.candidate_intake))
+            try:
+                return ChatResponse(_missing_fields_text(missing, session.candidate_intake))
+            except LLMGatewayConnectionError as exc:
+                error_desc = _format_llm_error(exc)
+                return ChatResponse(
+                    text=f"Trouble connecting to LLM gateway. {error_desc}",
+                    blocks=_llm_gateway_error_blocks(session.key, error_desc),
+                )
 
         try:
             preview = self.mcp.call_tool(
@@ -202,54 +222,11 @@ class DetChatOrchestrator:
                 f"Session closed. Start a new `/aws-det-onboard` request when needed."
             )
 
-        # Fallback: run locally via MCP tools (no API Gateway configured)
-        token = secrets.token_urlsafe(24)
-        session.approval_token = token
-        write_env = {"DET_MCP_WRITE_TOKEN": token}
-
-        try:
-            github_result = self.mcp.call_tool(
-                "det_commit_intake_to_github",
-                {
-                    "candidate": session.candidate_intake,
-                    "slack_user": slack_user or {"id": session.user_id},
-                    "approval_token": token,
-                },
-                extra_env=write_env,
-            )
-            if github_result.get("status") not in {"committed", "dry_run"}:
-                session.approval_state = "draft"
-                self.store.save(session)
-                return ChatResponse(
-                    _write_result_text(
-                        github_result,
-                        None,
-                        team_channel=session.candidate_intake.get("team_channel", ""),
-                    )
-                )
-
-            hcp_result = self.mcp.call_tool(
-                "det_create_hcp_project",
-                {
-                    "candidate": session.candidate_intake,
-                    "approval_token": token,
-                },
-                extra_env=write_env,
-            )
-        except Exception as exc:
-            logging.exception("Approved chatbot write failed")
-            session.approval_state = "draft"
-            self.store.save(session)
-            return ChatResponse(f"Approved action failed: {exc}")
-
-        self.store.reset(session.key)
+        session.approval_state = "draft"
+        self.store.save(session)
         return ChatResponse(
-            _write_result_text(
-                github_result,
-                hcp_result,
-                team_channel=session.candidate_intake.get("team_channel", ""),
-            )
-            + "\n\nSession closed. Start a new `/aws-det-onboard` request when needed."
+            "Onboarding workflow cannot be started: API Gateway is not configured. "
+            "Please contact your administrator."
         )
 
     def cancel(self, *, session_key: str) -> ChatResponse:
@@ -298,12 +275,29 @@ class DetChatOrchestrator:
         return updates
 
 
+def _is_llm_connection_error(exc: Exception) -> bool:
+    """Return True if *exc* indicates a network/connectivity failure to the LLM gateway."""
+    try:
+        from openai import APIConnectionError, APITimeoutError
+        if isinstance(exc, (APIConnectionError, APITimeoutError)):
+            return True
+    except ImportError:
+        pass
+    type_name = type(exc).__name__.lower()
+    return any(kw in type_name for kw in ("connect", "timeout", "network"))
+
+
+def _format_llm_error(exc: Exception) -> str:
+    """Return a short, user-facing description of an LLM gateway error."""
+    return f"{type(exc).__name__}: {str(exc)[:120]}"
+
+
 def _openai_extract(text: str, current_intake: dict[str, Any]) -> dict[str, Any]:
     provider = os.environ.get("AI_PROVIDER", "openai").strip().lower()
     if provider in {"", "none", "disabled"}:
         return {}
     if provider != "openai":
-        logging.warning("Unsupported AI_PROVIDER=%s; using deterministic extraction.", provider)
+        logging.warning("Unsupported AI_PROVIDER=%s; skipping AI extraction.", provider)
         return {}
 
     api_key = (
@@ -317,7 +311,7 @@ def _openai_extract(text: str, current_intake: dict[str, Any]) -> dict[str, Any]
         import httpx
         from openai import OpenAI
     except ImportError:
-        logging.warning("OpenAI SDK is not installed; using deterministic extraction.")
+        logging.warning("OpenAI SDK is not installed; skipping AI extraction.")
         return {}
 
     model = os.environ.get("AI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
@@ -337,33 +331,46 @@ def _openai_extract(text: str, current_intake: dict[str, Any]) -> dict[str, Any]
         "latest_message": text,
     }
 
-    try:
-        ssl_verify = os.environ.get("AI_SSL_VERIFY", "true").strip().lower()
-        disable_ssl_verify = ssl_verify in {"0", "false", "no", "off"}
-        if disable_ssl_verify:
-            logging.warning(
-                "AI_SSL_VERIFY disabled; TLS certificate verification is bypassed for OpenAI calls."
-            )
-            client = OpenAI(api_key=api_key, http_client=httpx.Client(verify=False))
-        else:
-            client = OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model=model,
-            temperature=0,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": json.dumps(user_prompt)},
-            ],
+    ssl_verify = os.environ.get("AI_SSL_VERIFY", "true").strip().lower()
+    disable_ssl_verify = ssl_verify in {"0", "false", "no", "off"}
+    if disable_ssl_verify:
+        logging.warning(
+            "AI_SSL_VERIFY disabled; TLS certificate verification is bypassed for OpenAI calls."
         )
-        content = response.choices[0].message.content or "{}"
-        parsed = json.loads(content)
-    except Exception:
-        logging.exception("OpenAI extraction failed; using deterministic extraction.")
-        return {}
+        client = OpenAI(api_key=api_key, http_client=httpx.Client(verify=False))
+    else:
+        client = OpenAI(api_key=api_key)
 
-    updates = parsed.get("intake_updates", parsed)
-    return updates if isinstance(updates, dict) else {}
+    last_exc: Exception | None = None
+    for attempt in range(_MAX_LLM_ATTEMPTS):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                temperature=0,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": json.dumps(user_prompt)},
+                ],
+            )
+            content = response.choices[0].message.content or "{}"
+            parsed = json.loads(content)
+            updates = parsed.get("intake_updates", parsed)
+            return updates if isinstance(updates, dict) else {}
+        except Exception as exc:
+            if _is_llm_connection_error(exc):
+                last_exc = exc
+                logging.warning(
+                    "LLM gateway connection attempt %d/%d failed: %s",
+                    attempt + 1,
+                    _MAX_LLM_ATTEMPTS,
+                    exc,
+                )
+                continue
+            logging.exception("OpenAI extraction failed (non-connection error).")
+            return {}
+
+    raise LLMGatewayConnectionError(_format_llm_error(last_exc)) from last_exc
 
 
 def _missing_fields_text(missing_fields: list[str], intake: dict[str, Any]) -> str:
@@ -420,36 +427,49 @@ def _openai_missing_fields_text(
         "response_shape": {"text": "Slack-ready follow-up text"},
     }
 
-    try:
-        ssl_verify = os.environ.get("AI_SSL_VERIFY", "true").strip().lower()
-        disable_ssl_verify = ssl_verify in {"0", "false", "no", "off"}
-        if disable_ssl_verify:
-            logging.warning(
-                "AI_SSL_VERIFY disabled; TLS certificate verification is bypassed for OpenAI calls."
-            )
-            client = OpenAI(api_key=api_key, http_client=httpx.Client(verify=False))
-        else:
-            client = OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model=model,
-            temperature=0.4,
-            response_format={"type": "json_object"},
-            max_tokens=240,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": json.dumps(user_prompt)},
-            ],
+    ssl_verify = os.environ.get("AI_SSL_VERIFY", "true").strip().lower()
+    disable_ssl_verify = ssl_verify in {"0", "false", "no", "off"}
+    if disable_ssl_verify:
+        logging.warning(
+            "AI_SSL_VERIFY disabled; TLS certificate verification is bypassed for OpenAI calls."
         )
-        content = response.choices[0].message.content or "{}"
-        parsed = json.loads(content)
-    except Exception:
-        logging.exception("OpenAI follow-up generation failed; using deterministic text.")
-        return ""
+        client = OpenAI(api_key=api_key, http_client=httpx.Client(verify=False))
+    else:
+        client = OpenAI(api_key=api_key)
 
-    text = str(parsed.get("text", "")).strip()
-    if not text or len(text) > 1200:
-        return ""
-    return text
+    last_exc: Exception | None = None
+    for attempt in range(_MAX_LLM_ATTEMPTS):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                temperature=0.4,
+                response_format={"type": "json_object"},
+                max_tokens=240,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": json.dumps(user_prompt)},
+                ],
+            )
+            content = response.choices[0].message.content or "{}"
+            parsed = json.loads(content)
+            text = str(parsed.get("text", "")).strip()
+            if not text or len(text) > 1200:
+                return ""
+            return text
+        except Exception as exc:
+            if _is_llm_connection_error(exc):
+                last_exc = exc
+                logging.warning(
+                    "LLM gateway connection attempt %d/%d failed: %s",
+                    attempt + 1,
+                    _MAX_LLM_ATTEMPTS,
+                    exc,
+                )
+                continue
+            logging.exception("OpenAI follow-up generation failed (non-connection error).")
+            return ""
+
+    raise LLMGatewayConnectionError(_format_llm_error(last_exc)) from last_exc
 
 
 def _friendly_missing_fields_text(
@@ -779,6 +799,40 @@ def _trim_extracted_value(value: str, *, stop_at_sentence: bool) -> str:
     return raw[:cut].strip(" .,-")
 
 
+def _llm_gateway_error_blocks(session_key: str, error_desc: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    "*Trouble connecting to LLM gateway.*\n"
+                    f"_{error_desc}_\n\n"
+                    "You can fill in the request using the form, or cancel."
+                ),
+            },
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Open Form"},
+                    "style": "primary",
+                    "action_id": "det_chat_open_form",
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Cancel"},
+                    "style": "danger",
+                    "action_id": "det_chat_cancel",
+                    "value": session_key,
+                },
+            ],
+        },
+    ]
+
+
 def _approval_blocks(session_key: str, preview_text: str) -> list[dict[str, Any]]:
     return [
         {
@@ -815,64 +869,6 @@ def _plain_text_preview(preview: dict[str, Any]) -> str:
     return f"Preview ready for {request_id}. Use the buttons to approve or cancel."
 
 
-def _write_result_text(
-    github_result: dict[str, Any] | None,
-    hcp_result: dict[str, Any] | None,
-    team_channel: str = "",
-) -> str:
-    if not github_result:
-        return "No GitHub result was returned."
-
-    github_status = github_result.get("status", "unknown")
-    lines = []
-    lines.append("Your request has been received. You will be notified once all setup is done.")
-    lines.append("")
-    lines.append(f"*GitHub:* `{github_status}`")
-    if github_result.get("url"):
-        lines.append(f"- AFT Repo - URL: {github_result['url']}")
-    elif github_result.get("path") and github_result.get("branch"):
-        lines.append(
-            f"- AFT Repo - Path: `{github_result['path']}` on branch `{github_result['branch']}`"
-        )
-    if github_result.get("message"):
-        lines.append(f"- {github_result['message']}")
-
-    if hcp_result:
-        hcp_status = hcp_result.get("status", "unknown")
-        lines.append("HCP Terraform project would be created with below details")
-        lines.append(f"*HCP Terraform:* `{hcp_status}`")
-        if hcp_result.get("project_name"):
-            lines.append(f"- Project: `{hcp_result['project_name']}`")
-        if hcp_result.get("workspaces"):
-            lines.append(f"- Workspaces: `{', '.join(hcp_result['workspaces'])}`")
-        terraform_url = _terraform_url(hcp_result)
-        if terraform_url:
-            lines.append(f"- Terraform URL: {terraform_url}")
-        if hcp_result.get("message"):
-            lines.append(f"- {hcp_result['message']}")
-
-    if team_channel:
-        lines.append("")
-        lines.append(
-            f"You can use this channel `{team_channel}` as a central point for real-time "
-            "updates/queries from Terraform Enterprise operations and AWS services."
-        )
-
-    if github_status == "dry_run" or (hcp_result or {}).get("status") == "dry_run":
-        lines.append("Dry run completed. Set `DET_DRY_RUN=false` to enable writes.")
-    return "\n".join(lines)
-
-
-def _terraform_url(hcp_result: dict[str, Any]) -> str:
-    base_url = os.environ.get("HCP_TERRAFORM_URL", "https://app.terraform.io").strip().rstrip("/")
-    org = os.environ.get("HCP_TERRAFORM_ORG", "").strip()
-    if base_url and org:
-        return f"{base_url}/app/{org}/projects"
-    workspaces = hcp_result.get("workspaces") or []
-    if base_url and isinstance(workspaces, list) and workspaces:
-        return f"{base_url}/app/workspaces/{workspaces[0]}"
-    return ""
-
 
 def _draft_text(intake: dict[str, Any]) -> str:
     normalized = normalize_intake(intake)
@@ -905,7 +901,7 @@ def _intro_text() -> str:
         "message, or we can fill it in step by step.\n\n"
         "Follow this <https://salesforce-sandbox2.enterprise.slack.com/docs/T04SR5XV56X/F0B2CDRBUBX|DOC for FAQ on Onboarding process>.\n\n"
         "To start, tell me the project/workload name, environment, and region.\n\n"
-        "Example: `Create a Dev sample project in us-east-1, small VPC, service EMS API, team channel ems-team, github repo my-org/terraform-ems, "
+        "Example: `Create a Dev sample project in us-east-1, small VPC, service EMS API, team channel ems-team, github repo adityajhacse/test, "
         "team DL ems-team@example.com because this is for a new workload.`"
     )
 

@@ -116,45 +116,32 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             "execution_id": event.get("execution_id"),
         }
 
-    except GitHubApiError as e:
-        logger.error(f"GitHub API error: {str(e)}", exc_info=True)
+    except (GitHubApiError, Exception) as e:
+        logger.error(f"GitHub commit error: {str(e)}", exc_info=True)
 
-        # Update status to FAILED
+        execution_id = event.get("execution_id") or ""
+        if execution_id and ":execution:" in execution_id:
+            execution_id = execution_id.split(":")[-1]
+
         try:
-            execution_id = event.get("execution_id") or ""
-            if execution_id and ":execution:" in execution_id:
-                execution_id = execution_id.split(":")[-1]
-            if execution_id:
-                from dynamodb_helper import get_helper
-                db = get_helper()
-                db.update_step_status(execution_id, "CommitToGitHub", "FAILED", error=str(e))
+            from dynamodb_helper import get_helper
+            db = get_helper()
+            db.update_step_status(execution_id, "CommitToGitHub", "FAILED", error=str(e))
         except Exception as ex:
             logger.warning(f"Failed to update status to FAILED: {ex}")
 
-        return {
-            "statusCode": 500,
-            "commit_sha": "",
-            "file_url": "",
-            "error": f"GitHub commit error: {str(e)}",
-            "intake": event.get("intake", {}),
-            "slack_channel": event.get("slack_channel"),
-            "slack_user": event.get("slack_user"),
-            "execution_id": event.get("execution_id"),
-        }
-    except Exception as e:
-        logger.error(f"Commit error: {str(e)}", exc_info=True)
-
-        # Update status to FAILED
         try:
-            execution_id = event.get("execution_id") or ""
-            if execution_id and ":execution:" in execution_id:
-                execution_id = execution_id.split(":")[-1]
-            if execution_id:
-                from dynamodb_helper import get_helper
-                db = get_helper()
-                db.update_step_status(execution_id, "CommitToGitHub", "FAILED", error=str(e))
-        except Exception as ex:
-            logger.warning(f"Failed to update status to FAILED: {ex}")
+            from slack_notifier import notify_step_failure
+            notify_step_failure(
+                step_name="Commit to GitHub",
+                execution_id=execution_id,
+                slack_channel=event.get("slack_channel") or "",
+                slack_user=event.get("slack_user") or "",
+                project_name=(event.get("intake") or {}).get("project_name", ""),
+                error=str(e),
+            )
+        except Exception as notify_exc:
+            logger.warning(f"Failed to send failure notification: {notify_exc}")
 
         return {
             "statusCode": 500,

@@ -21,7 +21,6 @@ def check_duplicate_project(db, project_name: str) -> dict[str, Any] | None:
             KeyConditionExpression='project_name = :project_name',
             ExpressionAttributeValues={':project_name': project_name},
             ScanIndexForward=False,  # Most recent first
-            Limit=10,  # Check last 10 requests for this project
         )
 
         items = response.get('Items', [])
@@ -57,7 +56,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     {
         "intake": {
             "project_name": "EMS",
-            "terraform_repo": "my-org/terraform-ems",
+            "terraform_repo": "adityajhacse/test",
             "team_channel": "C0123456789",
             "environments": ["Dev", "QA"],
             "regions": ["us-east-1"],
@@ -154,6 +153,23 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     except Exception as e:
         logger.error(f"Validation error: {str(e)}", exc_info=True)
+
+        try:
+            from slack_notifier import notify_step_failure
+            execution_id = event.get("execution_id") or ""
+            if execution_id and ":execution:" in execution_id:
+                execution_id = execution_id.split(":")[-1]
+            notify_step_failure(
+                step_name="Validate Intake",
+                execution_id=execution_id,
+                slack_channel=event.get("slack_channel") or "",
+                slack_user=event.get("slack_user") or "",
+                project_name=(event.get("intake") or {}).get("project_name", ""),
+                error=str(e),
+            )
+        except Exception as notify_exc:
+            logger.warning(f"Failed to send failure notification: {notify_exc}")
+
         return {
             "statusCode": 500,
             "valid": False,

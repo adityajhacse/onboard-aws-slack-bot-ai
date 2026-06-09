@@ -23,7 +23,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         "environment": "Dev",
         "project_id": "prj-abc123",
         "project_slug": "ems",
-        "terraform_repo": "my-org/terraform-ems",
+        "terraform_repo": "adityajhacse/test",
         "workspace_names": {"Dev": "ems-dev", "QA": "ems-qa"},
         ...
     }
@@ -104,56 +104,39 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             "project_id": project_id,
         }
 
-    except HcpTerraformError as e:
-        logger.error(f"HCP Terraform error for {event.get('environment')}: {str(e)}", exc_info=True)
+    except (HcpTerraformError, Exception) as e:
+        logger.error(f"HCP workspace creation error for {event.get('environment')}: {str(e)}", exc_info=True)
 
-        # Record workspace failure
+        execution_id = event.get("execution_id") or ""
+        if execution_id and ":execution:" in execution_id:
+            execution_id = execution_id.split(":")[-1]
+
         try:
-            execution_id = event.get("execution_id") or ""
-            if execution_id and ":execution:" in execution_id:
-                execution_id = execution_id.split(":")[-1]
-            if execution_id:
-                from dynamodb_helper import get_helper
-                db = get_helper()
-                db.add_workspace_result(
-                    execution_id=execution_id,
-                    environment=event.get("environment", ""),
-                    workspace_id="",
-                    workspace_name="",
-                    success=False,
-                    error=str(e)
-                )
+            from dynamodb_helper import get_helper
+            db = get_helper()
+            db.add_workspace_result(
+                execution_id=execution_id,
+                environment=event.get("environment", ""),
+                workspace_id="",
+                workspace_name="",
+                success=False,
+                error=str(e),
+            )
         except Exception as ex:
             logger.warning(f"Failed to record workspace failure: {ex}")
 
-        return {
-            "statusCode": 500,
-            "workspace_id": "",
-            "workspace_name": "",
-            "environment": event.get("environment", ""),
-            "error": f"HCP Terraform error: {str(e)}",
-        }
-    except Exception as e:
-        logger.error(f"Workspace creation error for {event.get('environment')}: {str(e)}", exc_info=True)
-
-        # Record workspace failure
         try:
-            execution_id = event.get("execution_id") or ""
-            if execution_id and ":execution:" in execution_id:
-                execution_id = execution_id.split(":")[-1]
-            if execution_id:
-                from dynamodb_helper import get_helper
-                db = get_helper()
-                db.add_workspace_result(
-                    execution_id=execution_id,
-                    environment=event.get("environment", ""),
-                    workspace_id="",
-                    workspace_name="",
-                    success=False,
-                    error=str(e)
-                )
-        except Exception as ex:
-            logger.warning(f"Failed to record workspace failure: {ex}")
+            from slack_notifier import notify_step_failure
+            notify_step_failure(
+                step_name=f"Create HCP Workspace ({event.get('environment', '')})",
+                execution_id=execution_id,
+                slack_channel=event.get("slack_channel") or "",
+                slack_user=event.get("slack_user") or "",
+                project_name=event.get("project_slug", ""),
+                error=str(e),
+            )
+        except Exception as notify_exc:
+            logger.warning(f"Failed to send failure notification: {notify_exc}")
 
         return {
             "statusCode": 500,
