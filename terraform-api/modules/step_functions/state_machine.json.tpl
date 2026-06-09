@@ -173,7 +173,9 @@
         "project_slug.$": "$.project_slug",
         "terraform_repo.$": "$.terraform_repo",
         "workspace_names.$": "$.workspace_names",
-        "execution_id.$": "$$.Execution.Name"
+        "execution_id.$": "$$.Execution.Name",
+        "slack_channel.$": "$.slack_channel",
+        "slack_user.$": "$.slack_user"
       },
       "Iterator": {
         "StartAt": "CreateWorkspace",
@@ -213,7 +215,10 @@
       "ItemsPath": "$.workspaces",
       "MaxConcurrency": 3,
       "Parameters": {
-        "workspace.$": "$$.Map.Item.Value"
+        "workspace.$": "$$.Map.Item.Value",
+        "execution_id.$": "$$.Execution.Name",
+        "slack_channel.$": "$.slack_channel",
+        "slack_user.$": "$.slack_user"
       },
       "Iterator": {
         "StartAt": "ConfigureVars",
@@ -221,7 +226,6 @@
           "ConfigureVars": {
             "Type": "Task",
             "Resource": "${hcp_vars_arn}",
-            "InputPath": "$.workspace",
             "Retry": [{
               "ErrorEquals": ["States.TaskFailed"],
               "IntervalSeconds": 2,

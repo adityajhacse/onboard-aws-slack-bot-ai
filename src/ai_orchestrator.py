@@ -84,7 +84,7 @@ class DetChatOrchestrator:
         except LLMGatewayConnectionError as exc:
             error_desc = _format_llm_error(exc)
             return ChatResponse(
-                text=f"Trouble connecting to LLM gateway. {error_desc}",
+                text=f"Issue with LLM Gateway - the AI assistant is currently unavailable. {error_desc}",
                 blocks=_llm_gateway_error_blocks(session.key, error_desc),
             )
         if updates:
@@ -124,7 +124,7 @@ class DetChatOrchestrator:
             except LLMGatewayConnectionError as exc:
                 error_desc = _format_llm_error(exc)
                 return ChatResponse(
-                    text=f"Trouble connecting to LLM gateway. {error_desc}",
+                    text=f"Issue with LLM Gateway - the AI assistant is currently unavailable. {error_desc}",
                     blocks=_llm_gateway_error_blocks(session.key, error_desc),
                 )
 
@@ -276,15 +276,20 @@ class DetChatOrchestrator:
 
 
 def _is_llm_connection_error(exc: Exception) -> bool:
-    """Return True if *exc* indicates a network/connectivity failure to the LLM gateway."""
+    """Return True if *exc* indicates a network/connectivity or auth failure with the LLM gateway.
+
+    Authentication errors (401) from LiteLLM / OpenAI-compatible gateways are treated as
+    gateway-level issues (misconfigured key or gateway unreachable) rather than user errors,
+    so they surface the "Issue with LLM Gateway" block with Open Form / Cancel buttons.
+    """
     try:
-        from openai import APIConnectionError, APITimeoutError
-        if isinstance(exc, (APIConnectionError, APITimeoutError)):
+        from openai import APIConnectionError, APITimeoutError, AuthenticationError, PermissionDeniedError
+        if isinstance(exc, (APIConnectionError, APITimeoutError, AuthenticationError, PermissionDeniedError)):
             return True
     except ImportError:
         pass
     type_name = type(exc).__name__.lower()
-    return any(kw in type_name for kw in ("connect", "timeout", "network"))
+    return any(kw in type_name for kw in ("connect", "timeout", "network", "auth", "authentication", "permission"))
 
 
 def _format_llm_error(exc: Exception) -> str:
@@ -806,8 +811,9 @@ def _llm_gateway_error_blocks(session_key: str, error_desc: str) -> list[dict[st
             "text": {
                 "type": "mrkdwn",
                 "text": (
-                    "*Trouble connecting to LLM gateway.*\n"
-                    f"_{error_desc}_\n\n"
+                    ":warning: *Issue with LLM Gateway*\n"
+                    # f"_{error_desc}_\n\n"
+                    "The AI assistant is currently unavailable. "
                     "You can fill in the request using the form, or cancel."
                 ),
             },

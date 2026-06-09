@@ -30,9 +30,10 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     }
     """
     try:
-        workspace_id = event.get("workspace_id", "")
-        workspace_name = event.get("workspace_name", "")
-        environment = event.get("environment", "")
+        workspace = event.get("workspace") or event  # support both nested and flat input
+        workspace_id = workspace.get("workspace_id", "")
+        workspace_name = workspace.get("workspace_name", "")
+        environment = workspace.get("environment", "")
 
         # Note: hcp_vars runs in parallel per workspace, not tracking overall step status here
         # The Step Functions will handle aggregating results

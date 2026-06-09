@@ -96,6 +96,26 @@ def _create_project(*, project_name: str, token: str, organization: str, base_ur
         raise HcpTerraformError("HCP Terraform returned an unexpected response.") from exc
 
 
+def _get_workspace_by_name(
+    *,
+    workspace_name: str,
+    token: str,
+    organization: str,
+    base_url: str,
+) -> dict | None:
+    """Return existing workspace dict {id, name} or None if not found."""
+    parsed = _get(
+        url=f"{base_url}/api/v2/organizations/{organization}/workspaces/{workspace_name}",
+        token=token,
+    )
+    if parsed is None:
+        return None
+    try:
+        return {"id": parsed["data"]["id"], "name": parsed["data"]["attributes"]["name"]}
+    except (KeyError, TypeError):
+        return None
+
+
 def _create_workspace(
     *,
     workspace_name: str,
@@ -120,11 +140,27 @@ def _create_workspace(
             },
         }
     }
-    parsed = _post(
-        url=f"{base_url}/api/v2/organizations/{organization}/workspaces",
-        payload=payload,
-        token=token,
-    )
+    try:
+        parsed = _post(
+            url=f"{base_url}/api/v2/organizations/{organization}/workspaces",
+            payload=payload,
+            token=token,
+        )
+    except HcpTerraformError as exc:
+        if "already been taken" in str(exc).lower() or "name has already" in str(exc).lower():
+            logging.warning(
+                "Workspace '%s' already exists in HCP Terraform; reusing it.", workspace_name
+            )
+            existing = _get_workspace_by_name(
+                workspace_name=workspace_name,
+                token=token,
+                organization=organization,
+                base_url=base_url,
+            )
+            if existing:
+                return existing
+        raise
+
     try:
         return {"id": parsed["data"]["id"], "name": parsed["data"]["attributes"]["name"]}
     except (KeyError, json.JSONDecodeError) as exc:
@@ -265,6 +301,32 @@ def _resolve_workspace_name(
     if custom_name:
         return custom_name
     return _workspace_name(project_slug, environment.strip().lower())
+
+
+def _get(*, url: str, token: str) -> dict | None:
+    """Perform a GET request to the HCP Terraform API. Returns None on 404."""
+    req = request.Request(
+        url=url,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.api+json",
+        },
+        method="GET",
+    )
+    try:
+        with request.urlopen(req, timeout=30, context=_ssl_context()) as response:
+            response_body = response.read().decode("utf-8")
+    except error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise HcpTerraformError(_build_http_error_message(exc.code, detail)) from exc
+    except error.URLError as exc:
+        raise HcpTerraformError(f"Network error while calling HCP Terraform: {exc.reason}") from exc
+    try:
+        return json.loads(response_body)
+    except json.JSONDecodeError as exc:
+        raise HcpTerraformError("HCP Terraform returned a non-JSON response.") from exc
 
 
 def _post(*, url: str, payload: dict, token: str) -> dict:
